@@ -1,1 +1,11 @@
-# project-alpha
+# ProjectAlpha
+
+An independent local-first place collection app. The current implementation target is iPhone and iPad on iOS/iPadOS 27, using SwiftUI, SwiftData and Clean Architecture.
+
+Start with the [design specification](docs/README.md) before implementing features. It contains confirmed product decisions, screen flows, architecture, data rules, navigation/deep links, widgets and an ordered implementation/test plan.
+
+- [Product scope and decisions](docs/01-product-and-decisions.md)
+- [Implementation and verification](docs/08-implementation-and-verification.md)
+- [Apple technology references](docs/09-apple-technology-references.md)
+
+The iOS source lives in `ios/ProjectAlpha`. Android and backend are future architecture placeholders, not part of the current runtime. The design documents describe intended behavior; they do not imply that the scaffold already implements it.
