@@ -1,0 +1,12 @@
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 4
+interrupt_message = true
+
+# XcodeBuildMCP via Apple's xcrun MCP bridge. UI/device-capable custom agents
+# also declare this server explicitly in their own TOML for fresh sessions.
+[mcp_servers.xcode]
+command = "xcrun"
+args = ["mcpbridge"]
+enabled = true
+startup_timeout_sec = 30.0
