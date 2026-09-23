@@ -7,9 +7,15 @@ These instructions govern every task in this repository, including work delegate
 - Read `README.md` and `docs/README.md` before changing code.
 - Treat `docs/01-product-and-decisions.md` through `docs/09-apple-technology-references.md` as the approved target product and architecture contract.
 - Treat the checked-out source, `ios/ProjectAlpha/ProjectAlpha.xcodeproj/project.pbxproj`, and `docs/10-scaffold-architecture-verification.md` as the authority for the scaffold's current implementation state.
-- The source currently supersedes two stale implementation facts: app and test targets already use Swift 6, and their device family is already iPhone/iPad (`1,2`). Do not "fix" either setting back to the older statements in docs 08 or 09.
+- The source currently confirms that app and test targets use Swift 6 and target iPhone/iPad device families (`1,2`). Do not regress either setting; recheck source/project settings before changing current-state documentation.
 - If documents disagree about user-visible behavior, data identity, feature scope, or an invariant, stop and ask the product owner. Do not silently select a contract.
 - `U-*` entries are confirmed product decisions, `D-*` entries are engineering decisions, `INV-*` entries are invariants, `AC-*` entries are acceptance criteria, and `FUTURE` is explicitly out of current scope.
+
+## Clarification gate
+
+- If any question, uncertainty, ambiguity, contradiction, missing requirement, unclear ownership, unsupported or unverified API, or unclear evidence expectation arises at any time, stop before making the affected assumption or change and ask the user.
+- Never infer a product/UX choice, silently choose a default, widen scope, or mark work complete while such a question is unresolved. Read-only investigation may continue only when it cannot commit the work to one of the unresolved choices.
+- Resume the affected work only after the user answers. Record the answer in the relevant handoff; approved contract changes still belong to `projectalpha_contract_maintainer`.
 
 ## Required reading by task
 
@@ -21,6 +27,7 @@ Always read docs 01, 03, 04, 08, and 10 plus the relevant feature document:
 - Widgets: docs 04, 05, 07, and 09.
 - Persistence, concurrency, or media: docs 03, 04, and 08.
 - Settings, localization, accessibility, or release configuration: docs 01, 02, 08, and 09.
+- Any app or widget UI, navigation, layout, component, or UX work: docs 01, 02, 05, 08, and 09 plus the current official Apple Human Interface Guidelines for iOS, iPadOS, Layout, and the relevant component. iPhone Duo work must also read Apple's current Designing for iPhone Duo guidance and associated developer documentation.
 
 Before adopting an Apple API, verify the declaration and availability in the installed SDK or current official Apple documentation, then compile a focused use. Do not invent API names from summaries or snippets.
 
@@ -48,9 +55,20 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 - Factories and initializers must be cheap and side-effect-free. Start and cancel observation through structured lifecycle tasks or explicit start/stop methods.
 - Preserve Swift 6 isolation. Do not use `@unchecked Sendable`, `nonisolated(unsafe)`, detached work, or global mutable state to hide an ownership or concurrency error.
 
+## Adaptive Apple UI/UX contract
+
+- Treat current Apple Human Interface Guidelines as the platform design authority. Prefer standard SwiftUI containers and controls so navigation, presentation, safe areas, bar placement, input, accessibility, and appearance inherit system behavior. A custom component needs a documented task-specific reason and equivalent accessibility/input behavior.
+- Adapt from the space available to the current scene using size classes, container geometry, safe areas, layout margins, and verified platform APIs. Do not branch layout from device model, `userInterfaceIdiom`, interface orientation, `UIScreen.main`, or fixed screen-width assumptions.
+- Preserve Home, Map, and Settings as the same three top-level destinations. Use the system tab/sidebar presentation appropriate to the available space. Use `NavigationSplitView` for hierarchical content when adjacent columns materially improve a regular-width experience, and let it collapse to one recognizable stack at compact widths; do not create a second route or presentation-state owner for the wide layout.
+- On iPad, support fluid window resizing and multitasking across compact, intermediate, and regular widths. Use additional space to keep related navigation/content or map/detail visible, minimize unnecessary full-screen/modal transitions, and keep every action usable with touch, hardware keyboard, trackpad/pointer, VoiceOver, Voice Control, Switch Control, Dynamic Type, and RTL.
+- On iPhone Duo, keep the same task hierarchy, state, and functionality across outer/inner displays, open/closed/partially folded poses, Split View, and vertically constrained/Picture-in-Picture layouts. Respect asymmetric safe areas and reserved regions. Let system toolbars, tab bars, sheets, menus, and split views adapt to the fold and vertical bar axis; group and label toolbar items, prioritize important actions, and use the system overflow menu.
+- Interactive and legible foreground content stays inside the applicable safe/reserved regions even when decorative backgrounds extend edge to edge. Provide a button, menu, keyboard, and accessibility alternative for gesture-only actions. Custom hit regions are at least 44 by 44 points.
+- Resizing, a size-class change, a display/pose change, or a bar-axis change is presentation-only. It must not discard or duplicate a route, selected ID, map scope/camera, search session, active draft/staged media, pending intent, or committed data.
+- Before naming or adopting a new Apple symbol, verify its declaration and availability in the installed SDK and compile a focused use. At the 2026-09-23 baseline, local Xcode 27.0 does not expose every API described in the iPhone Duo/Xcode 27.1 documentation; recheck the active toolchain, report the exact limitation, and ask the user instead of inventing an API, silently changing the deployment target, or claiming Duo evidence.
+
 ## Product invariants and exclusions
 
-- Preserve INV-01 through INV-08 and the exact duplicate policy in docs 04. Provider identity intersection blocks; the approved normalized coordinate/name fallback blocks; proximity at or below 20 metres warns; a same name at a remote coordinate does not warn by itself.
+- Preserve INV-01 through INV-09 and the exact duplicate policy in docs 04. Provider identity intersection blocks; the approved normalized coordinate/name fallback blocks; proximity at or below 20 metres warns; a same name at a remote coordinate does not warn by itself.
 - Exactly one protected default collection exists after bootstrap. A saved location has exactly one existing owner. Cross-collection copies are independent records.
 - A write validates against current data and commits atomically. Do not suspend between read/check/mutate/save in the store's critical section. Emit success only after persistence succeeds.
 - Never delete committed media before the database removes its reference. Prefer recoverable orphan files over lost user files.
@@ -73,6 +91,7 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 - Use Swift Testing for Domain, presentation-model/coordinator, and integration tests. Use XCTest UI only for critical end-to-end or UIKit lifecycle behavior.
 - Store tests use in-memory SwiftData but verify real save/reload/rollback/concurrency behavior. Media tests use isolated temporary directories. Provider and permission tests use deterministic fakes.
 - Select an actually installed iOS 27 simulator; do not hard-code an old simulator UUID. Use an isolated DerivedData path under `/tmp` and `CODE_SIGNING_ALLOWED=NO` for simulator verification.
+- Adaptive UI verification must exercise iPhone portrait/landscape, iPad full/half/third/quadrant/floating minimum-to-maximum widths, keyboard and pointer input, accessibility configurations, and iPhone Duo outer/inner/open/closed/partially folded and multitasking configurations when the required Xcode 27.1 Device Hub/runtime is available. If it is unavailable, report `BLOCKED` for those cases and do not substitute source inspection or an ordinary iPhone/iPad simulator as Duo evidence.
 - Distinguish product failures from simulator service, sandbox, signing, or environment failures.
 - Run `git diff --check`; when source is untracked, also inspect those files because Git diff does not cover them.
 - Never claim device, accessibility, RTL, widget, performance, or participant testing unless it was actually run in the required environment.

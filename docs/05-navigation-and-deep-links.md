@@ -22,7 +22,7 @@ flowchart TD
     Editor --> Picker[Collection picker within editor flow]
 ```
 
-One navigation stack per tab on compact layouts. Keep separate Home/Map/Settings route types. A wide layout may adapt content presentation without inventing a second competing navigation path for the same destination.
+Home, Map and Settings remain exactly three top-level destinations. On compact available width, use one navigation stack per destination. At wider sizes, let the system adapt the tab presentation to a sidebar and use `NavigationSplitView` or another standard split/adjacent presentation where the content hierarchy benefits. Keep separate Home/Map/Settings route types and one logical route graph: a column becoming visible or collapsing must not invent a competing navigation path or reset the selected destination.
 
 Conceptual route values (not copy-ready implementation):
 
@@ -63,11 +63,11 @@ The coordinator owns selected tab, the three routers, modal ownership, pending e
 | Scope Collection deleted | Trim Home path to nearest valid ancestor; typically Home |
 | Selected Location moved | Collection Map removes selection if out of scope; Global Map keeps selection |
 
-Hide the tab bar only while Collection Map is the visible Home destination. Restore it when returning to the list. Global Map does not explicitly hide the tab bar. Native modal sheets can temporarily cover underlying controls; Close remains available so users can return to tab navigation. Do not draw a second custom tab bar on top of a system sheet.
+Hide the current top-level tab/sidebar chrome only while Collection Map is the visible Home destination. Restore it when returning to the list. Global Map does not explicitly hide top-level navigation. Native modal sheets can temporarily cover underlying controls; Close remains available so users can return to top-level navigation. Do not draw a second custom tab bar or sidebar on top of a system presentation.
 
 ## Modal ownership
 
-Use an explicit enum/session for mutually exclusive map presentation states: none, detail, search or editor. Read-only detail may adapt to an inspector on a wide iPad. A form flow may own an internal navigation stack for collection selection/new collection, avoiding a chain of sheet booleans.
+Use an explicit enum/session for mutually exclusive map presentation states: none, detail, search or editor. Read-only detail may adapt to an adjacent panel/inspector whenever available space supports it, including iPad and the open iPhone Duo. A form flow may own an internal navigation stack for collection selection/new collection, avoiding a chain of sheet booleans. Prefer columns, inspectors and anchored popovers over blocking modal chains on iPad when they preserve context and match the hierarchy; compact adaptation may use a sheet without changing ownership.
 
 Opening Search suspends detail presentation but remembers selection. Cancelling Search restores prior selection/detail. Choosing a result replaces selection. Home's Find Saved Places action uses this same Global Map search presentation; dismissing it does not modify Home's path/filter. Opening an editor suspends read-only detail; Save/Cancel restores the appropriate map session after the editor dismisses. Photo viewer/system share/camera is a child of the currently active presentation and must be dismissed before an unrelated external route is applied.
 
@@ -133,11 +133,15 @@ Malformed URLs leave current UI unchanged. A missing location from a valid URL o
 
 A location moved to a different collection still opens by its current UUID. A favorite removed after widget rendering still opens if the location exists. Widget navigation resolves the current record rather than trusting stale projected attributes. Refresh stale widget data afterwards.
 
-## iPad and scene behavior
+## Adaptive iPad, iPhone Duo and scene behavior
 
 Navigation and drafts belong to a scene, never an app-global singleton. Shared persistence changes propagate to every active scene. A URL is consumed by the scene chosen by the system; other scenes do not all navigate in response. No new-window command is in v1 scope.
 
-On resize, detail moves between a sheet and adjacent panel without changing route, selected Location or map scope. Use one detail content model and one selected ID; do not retain duplicate compact and regular presentation owners. Back/Close behavior remains the same with touch, keyboard and VoiceOver.
+Choose navigation and presentation from the scene's available space, horizontal/vertical size classes and local geometry. Never branch from device model, interface idiom, interface orientation, `UIScreen.main` or fixed screen-width breakpoints. On iPad, verify full, half, third, quadrant and floating/resized windows. On iPhone Duo, verify outer and inner displays, open/closed/partially folded poses, side-by-side multitasking and the vertical resizing caused by relevant Picture-in-Picture layouts.
+
+On resize or pose change, detail can move between a sheet and adjacent panel and navigation columns can expand/collapse without changing route, selected Location, map scope/camera/search or any active draft/staged media. Use one detail content model and one selected ID; do not retain duplicate compact and regular presentation owners. Back/Close behavior and all functions remain equivalent with touch, keyboard, trackpad/pointer, VoiceOver, Voice Control and Switch Control.
+
+Use system navigation, tab/sidebar and toolbar containers. Standard bars may move from horizontal to vertical on iPhone Duo. Give actions concise labels, preserve a clear primary-action order, assign visibility priority where the SDK supports it, and keep lower-priority actions usable through system overflow instead of clipping or removing them. Foreground controls honor each safe-area inset independently, asymmetric margins and SDK-exposed reserved regions. Do not place custom interactive controls in a fold/curve or camera region; standard components are preferred because the system can move sheets, alerts, menus and bars away from those regions.
 
 ## Restoration
 

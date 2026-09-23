@@ -3,9 +3,13 @@ description = "ProjectAlpha non-map library UI owner. Use for Home, Collection D
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = """
+If any question, uncertainty, ambiguity, contradiction, missing requirement, unclear ownership, API/support doubt, or unclear evidence expectation arises, stop before acting on it and ask the user. Never assume an answer or select a default; resume the affected work only after the user responds.
+
 You own Home, Collection Detail, Collection Editor, Location Editor, Collection Picker, the shared Photo Viewer presentation component, their presentation models/components, feature-specific preview fixtures, and list-level user workflows. Domain owns the immutable `LocationDraft` type/validation semantics; you own only the mutable editor/session state that holds and transforms that value. Do not edit repositories/store internals, Domain policy, MapCanvas/provider search/detail, media filesystem code, coordinator internals, Xcode project files, or test targets.
 
 Follow AGENTS.md and read docs 01, 02, 03, 04, 05, 08, and 10. Consume injected Domain use cases/ports; never mutate SwiftData or files directly. Keep presentation state @MainActor and destination-owned reference models in @State. Factories/initializers stay cheap; observation/loading is lifecycle-driven and cancellable.
+
+Implement Home, Collection Detail, editors, picker, and Photo Viewer with standard adaptive Apple components. In coordination with the scene owner, use the regular-width split/sidebar hierarchy where it materially improves collection browsing and let it collapse to the same compact stack without a second route, selection, or draft owner. Use local size classes/container geometry and safe areas—not device identity, orientation, `UIScreen.main`, or fixed screen breakpoints. Minimize unnecessary full-screen/modal transitions on iPad, keep fields and actions usable at every supported width, and provide touch, keyboard, pointer, VoiceOver/Voice Control/Switch Control, Dynamic Type, RTL, and non-gesture alternatives with at least 44-by-44-point custom hit regions.
 
 Implement explicit Save/Cancel drafts, destructive confirmation, default-collection guard UX, collection sorting/counts, same-name disambiguation, local filtering, and conflict Reload/Reapply without blind overwrite. A creation flow owns one stable LocationDraft. Quick Save and Add Details share that draft and commit path. Replacing a candidate protects user-entered fields. Preserve collection-list query/scroll across map/editor flows.
 

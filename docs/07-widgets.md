@@ -55,14 +55,14 @@ Favorites filters all snapshot locations by `isFavorite`. Collection filters by 
 
 ## Layout, accessibility and links
 
-Small shows up to three readable rows; Medium/Large choose a row count from usable height rather than clipping a fixed count; Extra Large can use two columns. At large Dynamic Type, reduce rows while retaining the main action. Include collection/title context, short address and a provider-category symbol; do not use color alone to encode state.
+Small shows up to three readable rows; Medium/Large choose a row count from usable height rather than clipping a fixed count; Extra Large can use two columns. Treat family, proposed size and WidgetKit content margins as the available-space contract; do not infer device model, idiom, orientation or screen bounds. At large Dynamic Type, reduce rows while retaining the main action. Include collection/title context, short address and a provider-category symbol; do not use color alone to encode state.
 
 Use exactly one `widgetURL` as the background destination and `Link` for row destinations supported by the target family. Current Apple deep-link guidance includes Small among multi-target families, while some older/general widget pages list only Medium and larger. The iOS 27 implementation must verify row hit targets on a real Small widget, not just a SwiftUI preview. If the runtime does not support per-row targets as documented, record the limitation and resolve the Small interaction design before marking its acceptance criteria complete. [Apple widget deep-link guidance](https://developer.apple.com/documentation/widgetkit/linking-to-specific-app-scenes-from-your-widget-or-live-activity)
 
-Honor light/dark/tinted widget appearances, content margins, reduced transparency and RTL. Use the shared resolved language; localize configuration titles, entity labels and empty/error copy. Neither a hard-coded font size nor `.minimumScaleFactor` is a substitute for an accessible layout.
+Honor light/dark/tinted widget appearances, system content margins, Dynamic Type, VoiceOver, Voice Control, Switch Control, Reduce Motion/Transparency and RTL. Use the shared resolved language; localize configuration titles, entity labels and empty/error copy. Neither a hard-coded font size nor `.minimumScaleFactor` is a substitute for an accessible layout. Use native widget controls/links and targets with clear labels; no widget action may disappear only because the containing app window or iPhone Duo pose changed before launch.
 
 ## Verification requirements
 
 Test snapshot encoding/decoding/version rejection, consistent parent/child data, revision ordering, locale-only updates, deleted configurations, missing/corrupt/unavailable App Group files, and retry after publication failure. Widget tests must never read or write the real production App Group.
 
-Verify taps from Small/Medium/Large/Extra Large, cold launch, warm app, another selected tab and dirty editor. Assertions belong to the navigation contract, not only URL parsing. Validate signed entitlements, extension target membership and privacy of snapshot contents before release.
+Verify taps from Small/Medium/Large/Extra Large, cold launch, warm app, another selected tab and dirty editor. Include iPhone and iPad family/appearance variants, large text and RTL. Assertions belong to the navigation contract, not only URL parsing. Validate signed entitlements, extension target membership and privacy of snapshot contents before release.

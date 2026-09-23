@@ -18,6 +18,16 @@ Authority: [product decisions](01-product-and-decisions.md). Technical routing i
 | S-10 | Photo Viewer | From editor/detail | Full-size local image, paging, zoom, Close; no implicit photo edits |
 | S-11 | Settings | Settings tab root | Language, map style, units, local-storage limitation, feedback, privacy link, app version |
 
+## Adaptive presentation contract
+
+The screen inventory defines destinations and capabilities, not fixed device layouts. Home, Map and Settings remain the three top-level destinations. Let the system present those destinations as a tab bar or sidebar according to available space. Compact layouts use a stack; when the hierarchy benefits and space permits, iPad and the open iPhone Duo use native split/adjacent presentation so a list or map and its selection can remain visible together. A wide canvas must not merely stretch phone-width cards, and a narrow or resized window must not lose an action.
+
+Choose presentation from available space, size classes and scene geometry. Do not detect a device model, interface idiom or orientation, read `UIScreen.main`, or encode fixed screen-width breakpoints. Prefer `NavigationStack`, `NavigationSplitView`, `TabView`, lists, forms, inspectors, sheets, popovers, menus, alerts and system bars so iPadOS/iOS can adapt keyboard, pointer, focus, overflow, safe-area and iPhone Duo behavior. Minimize blocking modal chains on iPad; use a column, inspector or popover when it preserves context and suits the hierarchy.
+
+Every transition between compact, split, floating, tiled, outer-display, inner-display, side-by-side, Picture-in-Picture-constrained and partially folded sizes preserves the same route, selected record, map scope/camera/search, form draft and staged media. It may move or collapse a presentation, but must not duplicate a presentation owner, reset user work or hide functionality. Foreground controls honor safe areas, asymmetric margins and SDK-exposed reserved regions; full-bleed backgrounds may extend underneath them.
+
+All actions remain discoverable and operable with touch, keyboard, trackpad/pointer, Voice Control and Switch Control. Use standard focus, hover, context-menu and command behavior where available. Custom controls have a target of at least 44 by 44 points and expose labels, values, state and order to assistive technologies. Every layout supports Dynamic Type without clipping, RTL without semantic reversal, VoiceOver, Voice Control, Switch Control, Reduce Motion and Reduce Transparency.
+
 ## J-01 — Launch and library bootstrap
 
 1. Load versioned local storage, preferences and scene restoration state.
@@ -119,5 +129,6 @@ Use ProjectAlpha-specific support email and privacy URL when configured. During 
 | Missing selected entity | Close stale detail, refresh content, show unavailable message |
 | Storage unavailable | Recovery screen; never present success or an empty replacement library |
 | Unsaved draft interrupted | Keep Editing or Discard; queued external navigation waits |
+| Window size or device pose changes | Reflow the same destination and presentation state; preserve route, selection, map state, search, draft fields and staged media |
 
 All visible strings, pluralized counts, accessibility labels and share labels are localized. Read-only detail is dismissible. Dirty editors protect against accidental dismissal; clean editors dismiss normally.

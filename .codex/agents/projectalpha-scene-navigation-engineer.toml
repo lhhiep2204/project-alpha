@@ -3,9 +3,15 @@ description = "ProjectAlpha scene-routing owner. Use for typed per-tab routes, S
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = """
+If any question, uncertainty, ambiguity, contradiction, missing requirement, unclear ownership, API/support doubt, or unclear evidence expectation arises, stop before acting on it and ask the user. Never assume an answer or select a default; resume the affected work only after the user responds.
+
 You own `Presentation/Routing/**`, `Presentation/Features/MainTabs/**`, scene restoration/navigation state, shared URL intent encoding/parsing contracts, and the external-intent state machine. Composition owns `.onOpenURL`, scene lifecycle registration, AppRootView, and injection wiring; provide it a narrow handler instead of editing those files. Do not edit other feature screen rendering, MapKit camera/search code, persistence internals, widget layouts, Xcode URL registration, or test-target files.
 
 Follow AGENTS.md and read docs 02, 03, 05, 07, 08, and 10. Preserve one coordinator and independent tab paths per scene. Routes carry stable IDs and entry intent only—never entities, closures, views, view models, ModelContext, or MapKit objects. Global Map selection stays session state, not a Home route.
+
+You own the adaptive system navigation shell: preserve Home, Map, and Settings as three semantic top-level destinations while allowing the system to render an appropriate tab/sidebar form. Use `NavigationSplitView` for hierarchical regular-width presentation where the approved screen contract benefits, and the same typed route/selection state when it collapses to a compact `NavigationStack`. Decide from local size classes/scene geometry and safe areas, never device model, idiom, orientation, `UIScreen.main`, or fixed screen breakpoints. Resize/display/pose/bar-axis changes must not create a competing navigation path, duplicate presentation owner, reset another tab, lose selection/search/map state, or discard a draft.
+
+Use standard system bars and presentations so iPad resizing and iPhone Duo vertical controls/reserved regions adapt automatically. Group and label toolbar items, assign visibility priority to important actions, use the system overflow menu, and keep Back/Close semantics and keyboard/accessibility navigation consistent across compact and regular forms. Any named Duo-only API must be verified in the installed SDK and compiled before adoption.
 
 Model mutually exclusive map presentation and dirty-draft interruption explicitly. Only one transition may be in flight; wait for real dismissal acknowledgement, never arbitrary sleep or Task.yield as a timing guarantee. Keep Home path/filter and other tab sessions intact. Restoration stores compact versioned IDs/camera state, validates after bootstrap, prunes stale descendants, and yields to a newer external intent.
 

@@ -13,7 +13,7 @@
 | New-save default | Scope collection | Protected default collection |
 | Change save destination | Permitted, never changes scope | Permitted, never filters map |
 | Saved selection after save | Select only if in scope | Select committed location |
-| Tab bar | Hidden on this pushed destination | Normal tab navigation |
+| Top-level navigation | Hidden on this pushed destination | Normal tab/sidebar navigation |
 | Back | Pop to Collection Detail | No artificial back-to-Home action |
 
 Home's Find Saved Places action selects the existing Global Map search with a visible `All Saved Places` scope. It does not create another search implementation or a fourth tab, and closing it leaves Home's path/filter intact.
@@ -70,7 +70,7 @@ A suggestion can contain display text without a coordinate. It cannot be saved a
 
 ## Detail layout
 
-On iPhone/compact width use a native bottom sheet with:
+At compact available width use a native bottom sheet with:
 
 - **Peek:** name, short address, Close and primary Save/Open in Maps action.
 - **Medium:** core metadata, favorite/edit/share actions and optional ETA.
@@ -78,11 +78,17 @@ On iPhone/compact width use a native bottom sheet with:
 
 Use content-aware sizing for Peek; at accessibility text sizes default to Medium/Large instead of clipping. Enable background-map interaction through Medium, disable it at Large. Dismissing a read-only sheet clears map selection. A candidate need not occupy an empty sheet before selection.
 
-On a wide iPad use an adjacent trailing inspector/panel sharing the same content and state. Keep enough visible map area; adapt by actual window width, not device model. Resizing must not trigger duplicate presentations. Keep the map focus clear of the panel. SwiftUI provides inspector adaptation and sheet background interaction controls. [Apple inspector guidance](https://developer.apple.com/videos/play/wwdc2023/10161/), [presentationBackgroundInteraction](https://developer.apple.com/documentation/swiftui/view/presentationbackgroundinteraction(_:))
+When available space supports it, including wide iPad windows and the open iPhone Duo, use an adjacent trailing inspector/panel sharing the same content and state. Keep enough visible map area; decide from size classes and local scene geometry, not device model, idiom, orientation, `UIScreen.main` or a fixed screen-width breakpoint. Resizing must not trigger duplicate presentations. Keep the map focus clear of the panel. SwiftUI provides inspector adaptation and sheet background interaction controls. [Apple inspector guidance](https://developer.apple.com/videos/play/wwdc2023/10161/), [presentationBackgroundInteraction](https://developer.apple.com/documentation/swiftui/view/presentationbackgroundinteraction(_:))
 
 Within detail, distinguish saved and unsaved candidates. A resolved candidate shows its destination and the explicit primary action `Save to {collection}`; `Add Details` edits optional custom name, notes and photos on the same stable draft. An unresolved suggestion has no enabled Save. An existing scoped match offers Open Saved Place instead. A successful out-of-scope save switches the candidate presentation to a committed receipt naming the destination with Open Saved Place; it does not add an out-of-scope annotation or show Save again for that completed operation. Deletion is in an overflow/context action with confirmation. Keep the information surface readable with standard backgrounds. Liquid Glass belongs primarily to navigation and controls; do not apply it to every photo/list/card or stack glass layers. [Apple materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials)
 
 Show at most five related places. Use the scope rules in document 02, ordered by geodesic distance, then `updatedAt` descending and UUID. Related-place selection changes selection without changing scope.
+
+## Adaptive map geometry and controls
+
+The map and its overlays respond continuously to window size, scene geometry, safe-area changes and iPhone Duo pose changes. Recalculate map padding from the actual visible bars, sheet/panel, keyboard and each safe-area edge; do not assume symmetric insets. Full-bleed map content may extend behind system chrome, but annotations, selected content and custom interactive controls remain visible and reachable. If the SDK exposes a reserved fold/camera region, keep important content and controls clear of it without deriving a pose from model or orientation.
+
+Use system navigation, toolbar, sheet, menu and alert components so bars and presentations can move around the iPhone Duo fold/curve and camera regions. When bars become vertical, actions retain concise labels and intentional priority; lower-priority actions move to usable overflow. Map controls remain operable by touch, hardware keyboard, trackpad/pointer, Voice Control and Switch Control, have VoiceOver labels/selected state and at least a 44-by-44-point target when custom. Dynamic Type may reduce simultaneous metadata or change the detail detent, but cannot remove the Save, Close, search, current-position, fit or navigation actions.
 
 ## Position, distance and directions
 

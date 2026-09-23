@@ -1,6 +1,6 @@
 # Scaffold architecture alignment
 
-Updated: 2026-09-21. Scope: existing app shell, Collection value, preferences and presentation helpers. This is a completion record for the scaffold refactor, not completion of delivery slices P-01 through P-09.
+Updated: 2026-09-23. Scope: existing app shell, Collection value, preferences and presentation helpers. This is a completion record for the scaffold refactor, not completion of delivery slices P-01 through P-09.
 
 ## Ownership and dependencies
 
@@ -15,6 +15,12 @@ Updated: 2026-09-21. Scope: existing app shell, Collection value, preferences an
 | UserDefaultsPreferenceStore | App | Stores preferences using an explicitly supplied defaults suite |
 
 MainTabView accepts typed destination builders and has no dependency on App containers. RouterView binds a borrowed router. Feature factories are cheap and side-effect-free; SwiftUI may call them more than once. A reconstructed view must not replace its active model. Routers do not own feature models, coordinators, views or callbacks, avoiding an ownership cycle.
+
+## Current adaptive-UI gap
+
+The checked-out scaffold currently uses a plain three-item SwiftUI `TabView`; each destination is wrapped in a `NavigationStack`. It does not yet use `NavigationSplitView`, tab/sidebar adaptation, size-class or scene-geometry layout policy, iPhone Duo safe/reserved-region handling, or pose/resize preservation tests. A source scan also found no `UIScreen.main`, interface-idiom or orientation branching to remove. This is a current-state record, not evidence that the new adaptive product decision, engineering decisions, invariant or acceptance criteria are implemented.
+
+Subsequent feature slices must evolve this shell without creating a second navigation owner: keep the coordinator's three destination identities and logical routes while letting native containers adapt their presentation. Device Hub, iPad resizing, keyboard/pointer and accessibility evidence remains pending as specified in document 08.
 
 Domain contains immutable, explicitly nonisolated Sendable Collection and CollectionIcon values. Collection includes a required revision and typed symbol/local-asset icon. Account-sharing scaffolding was removed. Preview fixtures live under Presentation/PreviewSupport and are compiled only in Debug.
 
@@ -43,7 +49,7 @@ Tests cover independent scene paths, preservation of paths across tab selection,
 
 The project targets iPhone/iPad on iOS/iPadOS 27, with Swift 6 for app and test targets. Mac Catalyst, Designed for Mac and Designed for Apple Vision availability are disabled. There are no new external packages.
 
-No complete product acceptance criterion is claimed by this refactor. Storage, data validation, default-collection protection, map sessions, external intents, restoration, widget snapshots and translation catalogs are not implemented here.
+No complete product acceptance criterion is claimed by this refactor. Storage, data validation, default-collection protection, map sessions, external intents, restoration, widget snapshots, translation catalogs and the adaptive iPad/iPhone Duo contract are not implemented here.
 
 ## Validation results
 
@@ -65,3 +71,5 @@ git diff --check
 Final test result: `/tmp/project-alpha-review/DerivedData/Logs/Test/Test-ProjectAlpha-2026.09.21_19-09-12-+0700.xcresult`. Build/test logs are `/tmp/project-alpha-review/release.log` and `/tmp/project-alpha-review/verified-tests.log` (temporary local artifacts).
 
 Manual device/RTL journeys, full product UI tests, Instruments leak profiling and Thread Sanitizer were not run. Weak-reference tests verify release of the current ownership graph; they are not a proof that future features cannot introduce leaks or races. No complete AC ID is marked implemented. No new backend, database, widgets or external-intent behavior was added.
+
+The 2026-09-23 adaptive-contract documentation update re-read `MainTabView`, `RouterView`, `AppRootView` and `project.pbxproj`, then ran documentation link/ID/fence/whitespace checks only. It did not rerun the app build, tests, Device Hub, simulator, accessibility or iPhone Duo validation, and it does not extend the evidence above.

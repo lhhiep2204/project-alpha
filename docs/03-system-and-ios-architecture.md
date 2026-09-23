@@ -44,7 +44,7 @@ Arrows denote compile-time dependencies. Domain does **not** depend on Data. A r
 |---|---|---|
 | Domain | Collection/Location values, coordinates, place identity, validation, duplicate policy, repository/service protocols, use cases | SwiftUI views, MapKit/CoreLocation/SwiftData types, Combine publishers, localized UI strings, global settings |
 | Data | SwiftData models/mappers/store actor, repositories, Apple place/location adapters, media persistence | Tab selection, sheets, widgets' UI, screen copy |
-| Presentation | Feature state, drafts, navigation requests, SwiftUI, MapKit camera/rendering adapters, localization | Direct SwiftData mutations, file deletion, SQL/network DTOs, business identity rules |
+| Presentation | Feature state, drafts, navigation requests, SwiftUI, MapKit camera/rendering adapters, localization, adaptive containers and input/accessibility semantics | Direct SwiftData mutations, file deletion, SQL/network DTOs, business identity rules, device-model layout policy |
 | App | Manual DI, shared service lifetime, scene bootstrap, integration wiring | Business validation hidden in view factories |
 | Extension contracts | Versioned snapshot DTOs and URL intent encoding/parsing | App container, SwiftData models, UIKit-dependent helpers |
 
@@ -74,6 +74,7 @@ project-alpha/
         Services/                    # AppleMaps, device location, media
       Presentation/
         Routing/                     # SceneCoordinator, typed routes, RouterView
+        Adaptive/                    # Available-space presentation policy, if shared policy is justified
         Features/
           Home/ CollectionDetail/ CollectionMap/ Map/
           PlaceSearch/ LocationDetail/ LocationEditor/ CollectionEditor/ Settings/
@@ -100,6 +101,14 @@ Every `AppRootView`/scene owns its `SceneCoordinator` and independent tab router
 Views that own reference presentation state retain an injected `@Observable @MainActor` model with `@State`; child views receive the reference and use `@Bindable` only when binding is needed. Stable destination identity prevents a new model from replacing an active editor. Factories may run during view construction, so initializers must be cheap and side-effect-free. Start/cancel observation and loading through explicit lifecycle methods or `.task(id:)`, not constructor-launched unstructured work. Do not claim Apple prohibits constructing observable state in a view; the requirement is correct ownership and identity.
 
 Constructor injection is the default. Use Environment for scene-wide routing/preferences and narrowly scoped UI services, not as a global service locator accessed by all business code.
+
+## Adaptive presentation boundary
+
+Adaptive presentation is a Presentation concern layered over stable scene and feature state. `SceneCoordinator` and feature models own route, selection, map session, search and draft identity; a view chooses stack, split, adjacent, inspector, sheet or popover from current available space without creating a second owner. The same IDs and models cross layout transitions. No persistence, Domain policy or route value records a device family, interface orientation or a particular compact/regular rendering.
+
+Use the standard SwiftUI navigation, tab/sidebar, toolbar and presentation containers so the system can respond to iPad window resizing and iPhone Duo displays, folds and vertical bars. Treat size classes and scene geometry as inputs local to the presented scene. Do not use device-model checks, interface idiom, orientation, `UIScreen.main` or fixed screen breakpoints as architecture. When custom geometry is unavoidable, consume each safe-area inset independently and use only SDK-declared reserved-region/arrangement APIs whose availability has been verified and compiled against the selected SDK.
+
+Input and accessibility are part of the component contract rather than a later skin. Shared UI components expose semantic actions for touch, keyboard and pointer; preserve native focus, hover and scanning behavior; support VoiceOver, Voice Control and Switch Control; meet the 44-by-44-point minimum custom target; and respond to Dynamic Type, RTL, Reduce Motion and Reduce Transparency. Widget views follow the same semantic and layout principles within WidgetKit's family/content-margin contract.
 
 ## Persistence and concurrency
 

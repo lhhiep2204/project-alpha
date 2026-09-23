@@ -1,12 +1,12 @@
 # Product and decisions
 
-Status: approved design baseline. Product decisions below reflect discovery decisions confirmed on 2026-09-20.
+Status: approved design baseline. Product decisions below reflect discovery decisions confirmed through 2026-09-23.
 
 ## Product intent
 
 ProjectAlpha saves and organizes places in collections for everyday use, travel planning and field work with location notes. The primary v1 task is to capture a valid place quickly and enrich it later. Home is the entry to the personal library. A map pushed from a collection supports focused exploration; the Map tab supports exploration across the entire library. All user records and attached images are stored locally.
 
-The first implementation targets iPhone on iOS 27 and iPad on iPadOS 27. There is no compatibility requirement for earlier OS releases, macOS, visionOS, watchOS or Android in this delivery.
+The first implementation targets iPhone, including iPhone Duo, on iOS 27 and iPad on iPadOS 27. Every app and widget surface must remain a single coherent experience as its available space changes. There is no compatibility requirement for earlier OS releases, macOS, visionOS, watchOS or Android in this delivery.
 
 ## Confirmed decisions
 
@@ -14,7 +14,7 @@ The first implementation targets iPhone on iOS 27 and iPad on iPadOS 27. There i
 |---|---|
 | U-01 | ProjectAlpha is a standalone app and repository with its own data store, bundle identity, URL scheme and App Group. |
 | U-02 | SwiftData local persistence. No backend server, login, cloud storage or synchronization in the first release. |
-| U-03 | Three tabs: Home, Map and Settings. Keep the existing three-tab foundation. |
+| U-03 | Exactly three top-level destinations: Home, Map and Settings. Keep the existing three-destination foundation while allowing native tab/sidebar presentation. |
 | U-04 | Home → Collection Detail/location list → Collection Map. Tapping a location opens its detail on that map, alongside other locations in the same collection. |
 | U-05 | Collection Detail has Show All on Map. It fits the camera to all locations in the collection. |
 | U-06 | Collection Map initially targets its own collection when saving. The user may choose another destination collection; this changes only the save destination. |
@@ -23,8 +23,8 @@ The first implementation targets iPhone on iOS 27 and iPad on iPadOS 27. There i
 | U-09 | Prevent duplicate places within a collection. Allow independent records for the same place in different collections. |
 | U-10 | Keep favorites, notes, location photos, collection images/icons, arbitrary map pins, distance/ETA, external directions, location sharing, widgets and deep links. |
 | U-11 | Sharing a location uses the system share sheet and an Apple Maps link. Account-based collection sharing and collaboration are future placeholders. |
-| U-12 | iPhone detail uses a bottom sheet; wide iPad uses an adjacent detail panel, adapting to a sheet when narrow. Closing detail keeps the map open. |
-| U-13 | Collection Map hides the tab bar and uses Back to return to its collection's location list. |
+| U-12 | Compact available width uses a bottom sheet; wider layouts use an adjacent detail panel when space permits. Closing detail keeps the map open. |
+| U-13 | Collection Map hides the current top-level tab/sidebar chrome and uses Back to return to its collection's location list. |
 | U-14 | Widget location taps open the global Map tab, selecting the location and presenting its detail. |
 | U-15 | Collection Map searches saved locations in that collection plus Apple Maps. Global Map searches all saved locations plus Apple Maps. |
 | U-16 | Keep Favorites and configurable Collection Home Screen widgets: Small, Medium, Large, plus Extra Large on iPad. Widgets display and open content; editing from widgets, Lock Screen widgets, Siri/Shortcuts are future scope. |
@@ -34,6 +34,7 @@ The first implementation targets iPhone on iOS 27 and iPad on iPadOS 27. There i
 | U-20 | Optimize v1 for quick capture. A resolved candidate can be explicitly saved to its visible destination without first completing optional custom name, notes or photos. |
 | U-21 | In-app Apple Maps search, dropped pins, manual coordinates and current position are sufficient capture sources for v1. Receiving external map links and bulk import remain future scope. |
 | U-22 | Local-only storage without in-app backup/restore is an accepted v1 limitation. Settings must state that there is no in-app sync or backup/restore; do not imply verified device-backup behavior. |
+| U-23 | Every app and widget surface follows current Apple Human Interface Guidelines and uses native adaptive presentation across iPhone, iPad and iPhone Duo. Preserve the same functionality, hierarchy and user work at all supported window sizes and device poses. |
 
 ## Vocabulary
 
@@ -68,6 +69,7 @@ The first implementation targets iPhone on iOS 27 and iPad on iPadOS 27. There i
 | Share location | Preview the composed payload, exclude notes by default, then use the system share sheet with an Apple Maps URL; no account required |
 | Home Screen widgets | Favorites and configurable Collection widgets; route location taps to Global Map |
 | Settings | Language, map type, distance unit and a concise local-storage limitation shared consistently by the app and widgets |
+| Adaptive interaction | Touch, keyboard, trackpad/pointer and accessibility operation across supported iPhone/iPad layouts, with native controls and no functionality available only in a particular size or pose |
 | Provider category | Display and include in search; tag editing and additional category filters are future scope |
 | Online accounts, sync and collaboration | FUTURE only |
 
@@ -92,6 +94,8 @@ The v1 feature set is defined by U-10, U-16 and this table. Future placeholders 
 | D-13 | Candidate detail owns one stable draft and exposes explicit `Save to {collection}` plus optional `Add Details`. Both paths use the same commit-time validation and duplicate policy; quick capture is not autosave. |
 | D-14 | A share starts with notes excluded. The user can include notes for that share after previewing the exact composed payload; the choice does not persist to the next share. |
 | D-15 | Possible-duplicate warnings use the approved proximity rule. Name equality without proximity is searchable context, not an interruption. |
+| D-16 | Preserve Home, Map and Settings as exactly three top-level destinations while allowing the system to render native tab/sidebar forms. Use a compact navigation stack and standard `NavigationSplitView`/split or adjacent presentations when the content hierarchy benefits from wider available space. Make layout decisions from available space, size classes and scene geometry, never device model, interface idiom, orientation, `UIScreen.main` or fixed screen breakpoints. Prefer standard controls and minimize modal presentation on iPad. |
+| D-17 | Treat resize, multitasking and iPhone Duo pose changes as continuous layout changes. Honor each safe-area edge, asymmetric margins and SDK-exposed reserved regions; let standard navigation/tool/tab bars move vertically where the system chooses, with labeled actions, explicit priority and useful overflow. Preserve routes, selections, map scope/camera/search, drafts/staged media and functionality while supporting touch, keyboard, trackpad/pointer, Dynamic Type, RTL, VoiceOver, Voice Control, Switch Control, Reduce Motion and Reduce Transparency. Custom interactive targets are at least 44 by 44 points. |
 
 ## Offline behavior
 

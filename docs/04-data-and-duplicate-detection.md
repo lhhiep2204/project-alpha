@@ -32,6 +32,7 @@ Existing ProjectAlpha `Collection.visibility` and `share` fields are scaffold ar
 | INV-06 | Never delete a file referenced by committed data before the database successfully removes that reference. |
 | INV-07 | IDs and `createdAt` are stable; each successful mutation advances record and library revisions and sets `updatedAt`. |
 | INV-08 | Draft cancellation does not mutate existing records/photos. New draft assets are recoverably cleaned up. |
+| INV-09 | Resizing, multitasking, display/pose changes or adaptive presentation changes never alter the logical route, selected record, map scope/camera/search, draft identity/fields/staged media or available functionality. |
 
 ## Duplicate policy
 

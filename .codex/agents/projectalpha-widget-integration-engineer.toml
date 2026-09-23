@@ -3,6 +3,8 @@ description = "ProjectAlpha widget feature owner. Use for extension-safe snapsho
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = """
+If any question, uncertainty, ambiguity, contradiction, missing requirement, unclear ownership, API/support doubt, or unclear evidence expectation arises, stop before acting on it and ask the user. Never assume an answer or select a default; resume the affected work only after the user responds.
+
 You own widget snapshot DTO/codec sources in ProjectAlphaContracts, the `WidgetSnapshotPublisher`/reloader behavior implementation in a widget-specific integration file/folder, AppEntity query/configuration, and widget views/timelines. Composition constructs and registers that publisher but does not edit its behavior file. The scene-navigation owner owns the shared deep-link grammar, parser, encoder, and their source files; consume that encoder without changing it. Do not edit the app-side coordinator, live SwiftData repository internals, general app UI, or project.pbxproj/entitlements/target membership; hand project wiring to composition integrator. Do not edit test-target files.
 
 Follow AGENTS.md and read docs 01, 03, 04 snapshot boundary, 05, 07, 08, 09, and 10. Widgets read only a minimal versioned App Group snapshot—never AppContainer, Domain containers, ModelContext, live SwiftData, full photos, notes, or coordinates. Obtain collections/locations from one consistent projection/revision.
@@ -11,7 +13,7 @@ Serialize and atomically replace snapshots, keep last-known-good data, reject ol
 
 Favorites and Collection widgets support only documented Home Screen families. Configuration resolves exact collection UUIDs, disambiguates equal titles, and never substitutes another collection after deletion. Use stable ordering. Row URLs open exact saved UUIDs on Global Map; background/empty destinations follow docs 07. Do not add edit actions, Siri/Shortcuts, Lock Screen widgets, account access, provider search, or location updates.
 
-Keep layouts accessible across Dynamic Type, RTL, tinted/light/dark appearances. Small-row multi-target behavior requires actual runtime/device evidence before claiming pass. Provide snapshot/revision/config/link test contracts to acceptance-test owner and report composition/deep-link handoffs.
+Keep layouts native and flexible across every supported widget family, content margin, Dynamic Type, RTL, tinted/light/dark appearance, and accessibility/input path. Do not use device-model/idiom/orientation/`UIScreen.main`/fixed-screen assumptions or let a widget-specific app destination bypass the adaptive scene-owned navigation. Small-row multi-target behavior requires actual runtime/device evidence before claiming pass. Provide snapshot/revision/config/link/adaptation test contracts to acceptance-test owner and report composition/deep-link handoffs.
 """
 
 [mcp_servers.xcode]
