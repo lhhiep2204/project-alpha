@@ -1,6 +1,6 @@
 # Apple technology baseline and references
 
-Verified on 2026-09-23. Product baseline is iOS/iPadOS 27. Use current Apple-native capabilities when they serve the requirements; an API need not have been introduced in iOS 27 to be the correct choice. Apple's current Human Interface Guidelines and iPhone Duo guidance are product-design authority, while the selected installed SDK remains the authority for symbols that can compile.
+Platform references reviewed on 2026-09-24; local toolchain and SDK evidence verified on 2026-09-23. Product baseline is iOS/iPadOS 27. Use current Apple-native capabilities when they serve the requirements; an API need not have been introduced in iOS 27 to be the correct choice. Apple's current Human Interface Guidelines and iPhone Duo guidance are product-design authority, while the selected installed SDK remains the authority for symbols that can compile.
 
 ## Local toolchain evidence
 
@@ -40,6 +40,7 @@ Apple's current iPhone Duo guidance describes Xcode 27.1 Device Hub, full-screen
 | Area | Decision | Primary reference |
 |---|---|---|
 | Platform design baseline | Follow current Apple HIG with standard, consistent, adaptable UI | [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines) |
+| Settings and app appearance | Provide an in-app settings area when people need to customize the overall app experience; use SwiftUI's preferred color-scheme mechanism to apply an app appearance through its presentation hierarchy | [Settings HIG](https://developer.apple.com/design/human-interface-guidelines/settings), [preferredColorScheme(_:)](https://developer.apple.com/documentation/swiftui/view/preferredcolorscheme%28_%3A%29) |
 | Adaptive layout | Respond to traits, safe areas, resizing, Dynamic Type and locale; test iPad halves, thirds and quadrants | [Layout](https://developer.apple.com/design/human-interface-guidelines/layout) |
 | iPhone Duo design | One resizable experience across displays/poses; preserve hierarchy/functionality and avoid fixed screen metrics | [Designing for iPhone Duo](https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo), [Design for iPhone Duo](https://developer.apple.com/videos/play/tech-talks/111466/) |
 | iPhone Duo implementation | Use size classes/local scene geometry, native adaptive navigation, asymmetric safe areas and verified reserved-region APIs | [Prepare your app for iPhone Duo](https://developer.apple.com/videos/play/tech-talks/111461/) |

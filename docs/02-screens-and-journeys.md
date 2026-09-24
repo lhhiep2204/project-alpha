@@ -16,7 +16,7 @@ Authority: [product decisions](01-product-and-decisions.md). Technical routing i
 | S-08 | Location Editor | Add details/edit sheet | Destination collection, place/coordinate source, optional custom name/notes/photos; Save/Cancel |
 | S-09 | Collection Picker | Inside Location Editor | All collection names, selected destination, create collection inline |
 | S-10 | Photo Viewer | From editor/detail | Full-size local image, paging, zoom, Close; no implicit photo edits |
-| S-11 | Settings | Settings tab root | Language, map style, units, local-storage limitation, feedback, privacy link, app version |
+| S-11 | Settings | Settings tab root | Language, app appearance (System/Light/Dark), map style, units, local-storage limitation, feedback, privacy link, app version |
 
 ## Adaptive presentation contract
 
@@ -107,9 +107,9 @@ The default share payload contains display/provider name, address when available
 
 Directions hand off to Apple Maps by default, with Google Maps as an external option. In-app distance/ETA is supplementary, not turn-by-turn navigation. Display the current supported mode beside ETA and let the user select Walking or Driving for the active map session. Changing mode cancels/replaces the route estimate but does not change a global hidden preference. Label straight-line distance separately from route distance. No current position means no origin-based ETA, but opening the destination in an external maps app remains available.
 
-## J-08 — Settings and language
+## J-08 — Settings, language and appearance
 
-Settings provides System/supported language selection, Standard/Satellite/Hybrid map style, kilometres/miles, feedback, privacy information and app version/build. Changes apply across both maps and widgets without resetting navigation or discarding drafts.
+Settings provides System/supported language selection, System/Light/Dark app appearance, Standard/Satellite/Hybrid map style, kilometres/miles, feedback, privacy information and app version/build. The selected appearance applies throughout ProjectAlpha and persists across launches. System follows the platform appearance; Light and Dark select their corresponding app appearance. Language and appearance changes take effect across the app without resetting navigation or discarding drafts. Appearance does not change a map's selected map style.
 
 Settings states that records are stored on this device and v1 has no in-app synchronization or backup/restore. This copy must not claim whether an OS/device backup includes the app until that behavior is separately verified.
 

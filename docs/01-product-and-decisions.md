@@ -35,6 +35,7 @@ The first implementation targets iPhone, including iPhone Duo, on iOS 27 and iPa
 | U-21 | In-app Apple Maps search, dropped pins, manual coordinates and current position are sufficient capture sources for v1. Receiving external map links and bulk import remain future scope. |
 | U-22 | Local-only storage without in-app backup/restore is an accepted v1 limitation. Settings must state that there is no in-app sync or backup/restore; do not imply verified device-backup behavior. |
 | U-23 | Every app and widget surface follows current Apple Human Interface Guidelines and uses native adaptive presentation across iPhone, iPad and iPhone Duo. Preserve the same functionality, hierarchy and user work at all supported window sizes and device poses. |
+| U-24 | Settings lets the user choose app appearance using System, Light or Dark. The choice applies across the app and persists. System follows the platform appearance; Light and Dark select the corresponding appearance. |
 
 ## Vocabulary
 
@@ -68,7 +69,7 @@ The first implementation targets iPhone, including iPhone Duo, on iOS 27 and iPa
 | External directions | Support Apple Maps and Google Maps handoff without an embedded third-party map SDK |
 | Share location | Preview the composed payload, exclude notes by default, then use the system share sheet with an Apple Maps URL; no account required |
 | Home Screen widgets | Favorites and configurable Collection widgets; route location taps to Global Map |
-| Settings | Language, map type, distance unit and a concise local-storage limitation shared consistently by the app and widgets |
+| Settings | Language, app appearance (System/Light/Dark), map type, distance unit and a concise local-storage limitation shared consistently by the app and widgets |
 | Adaptive interaction | Touch, keyboard, trackpad/pointer and accessibility operation across supported iPhone/iPad layouts, with native controls and no functionality available only in a particular size or pose |
 | Provider category | Display and include in search; tag editing and additional category filters are future scope |
 | Online accounts, sync and collaboration | FUTURE only |

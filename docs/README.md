@@ -1,6 +1,6 @@
 # ProjectAlpha design specification
 
-Version: 1.1 • Updated: 2026-09-23 • Language: English
+Version: 1.2 • Updated: 2026-09-24 • Language: English
 
 This is the implementation specification for a new, independent app. It describes the intended product, not functionality already implemented. The iOS repository currently contains a three-tab scaffold. No application code was changed when preparing this specification.
 
@@ -49,7 +49,7 @@ The product questions raised during discovery are resolved for the documented v1
 
 ## Documentation verification
 
-Validation on 2026-09-23: documentation links resolve, code fences are balanced, and all 60 acceptance IDs are present exactly once in order. Documentation whitespace checks pass.
+Validation on 2026-09-24: documentation links resolve, code fences are balanced, and all 61 acceptance IDs are present exactly once in order. Documentation whitespace checks pass.
 
 No app build or automated app tests were run for this documentation-only delivery. `git diff --check -- README.md docs` passed. The untracked iOS source and project settings were read only to verify current-state claims and were preserved.
 

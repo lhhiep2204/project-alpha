@@ -98,6 +98,17 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 - Every completion report must state: assigned scope, affected AC/INV/D identifiers, changed files, exact commands and results, manual checks, remaining limitations, and any approved deviation.
 - Implementers may report `implementation complete; independent verification pending`. Only the primary orchestrator may declare an AC or slice `READY`/`PASSED`, and only after every applicable independent test, review, build, and device gate has reported current evidence.
 
+## Project skill routing
+
+- Project skills live under `.agents/skills/`. Load the relevant `SKILL.md` and its referenced material when the task matches; all agents working in this repository can use these skills.
+- For SwiftUI implementation or review, use `swiftui-specialist`.
+- For every production SwiftUI `View` a task creates or materially changes—including screens, subviews, reusable components, and generic view wrappers—add at least one `#Preview` next to the view. Give it representative deterministic inputs and preview-only fixtures; do not connect previews to live services or persistent user data. If a production view cannot be previewed without violating an architecture boundary, document the specific blocker in the handoff. Test-only view harnesses do not need previews.
+- For new or changed iOS 27 SwiftUI APIs, or related SDK 27 compiler errors, use `swiftui-whats-new-27`. Follow this repository's SDK declaration, availability, and focused-compile checks before adopting an API.
+- For simulator or device UI evidence, use ProjectAlpha's `.agents/skills/device-interaction` workflow and the Xcode MCP requirements above.
+- Use `modernize-tests` when the user requests test modernization or a test task explicitly calls for migrating legacy tests. Do not migrate tests opportunistically; preserve the Swift Testing and critical XCTest UI boundaries above.
+- Use `audit-xcode-security-settings` for an explicit Xcode security/build-settings audit. Project configuration changes remain owned by `projectalpha_composition_integrator`; this skill does not expand that ownership.
+- `uikit-app-modernization` and `adopt-c-bounds-safety` are not installed because the current iOS implementation is SwiftUI/Swift and contains no UIKit app or C source to modernize. Reassess if that scope changes.
+
 ## Agent coordination
 
 - `projectalpha_spec_tracer` maps work to contracts and dependencies; it does not implement.
