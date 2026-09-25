@@ -36,6 +36,16 @@ enum LogLevel: String {
 /// Debug message content...
 /// ```
 struct Logger {
+    private enum Format {
+        static let messageSeparator = "\n"
+        static let entry = """
+            %@ %@ - %@: Line %d, Column: %d
+            - Function: %@
+            - Messages:
+            %@
+            """
+    }
+
     /// Prevents initialization since `Logger` is a static utility.
     private init() {}
 
@@ -59,14 +69,11 @@ struct Logger {
     ) {
 #if DEBUG
         let fileName = getFileName(file)
-        let messageString = messages.map { "\($0)" }.joined(separator: "\n")
+        let messageString = messages.map { String(describing: $0) }.joined(separator: Format.messageSeparator)
 
-        print("""
-            \(level.rawValue) \(AppInfoHelper.appName) - \(fileName): Line \(line), Column: \(column)
-            - Function: \(function)
-            - Messages:
-            \(messageString)
-            """)
+        print(String(format: Format.entry,
+                     level.rawValue, AppInfoHelper.appName, fileName,
+                     line, column, function, messageString))
 #endif
     }
     // swiftlint:enable function_parameter_count

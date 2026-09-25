@@ -4,6 +4,25 @@ import SwiftUI
 import Testing
 @testable import ProjectAlpha
 
+private enum TestValue {
+    static let preferenceSuitePrefix = "ProjectAlphaTests."
+    static let invalidLanguage = "unsupported-language"
+    static let invalidTheme = "unsupported-theme"
+    static let invalidMap = "unsupported-map"
+    static let invalidDistanceUnit = "unsupported-unit"
+    static let catalogPath = "ProjectAlpha/Presentation/Localization/Localizable.xcstrings"
+    static let catalogStringsKey = "strings"
+    static let catalogSourceLanguageKey = "sourceLanguage"
+    static let catalogVersionKey = "version"
+    static let catalogVersion = "1.1"
+    static let catalogLocalizationsKey = "localizations"
+    static let catalogStringUnitKey = "stringUnit"
+    static let catalogStateKey = "state"
+    static let catalogTranslatedState = "translated"
+    static let catalogValueKey = "value"
+    static let collectionName = "Travel"
+}
+
 @MainActor
 struct ArchitectureTests {
     @Test func scenesKeepIndependentNavigation() {
@@ -41,13 +60,13 @@ struct ArchitectureTests {
     }
 
     @Test func preferencesPersistAndInvalidValuesFallBack() throws {
-        let suite = "ProjectAlphaTests.\(UUID().uuidString)"
+        let suite = TestValue.preferenceSuitePrefix + UUID().uuidString
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        defaults.set("unsupported-language", forKey: "CURRENT_LANGUAGE")
-        defaults.set("unsupported-theme", forKey: "APP_THEME")
-        defaults.set("unsupported-map", forKey: "DEFAULT_MAP_TYPE")
-        defaults.set("unsupported-unit", forKey: "DISTANCE_UNIT")
+        defaults.set(TestValue.invalidLanguage, forKey: UserDefaultsPreferenceStore.Keys.language)
+        defaults.set(TestValue.invalidTheme, forKey: UserDefaultsPreferenceStore.Keys.theme)
+        defaults.set(TestValue.invalidMap, forKey: UserDefaultsPreferenceStore.Keys.mapType)
+        defaults.set(TestValue.invalidDistanceUnit, forKey: UserDefaultsPreferenceStore.Keys.distanceUnit)
         let preferences = AppPreferences(store: UserDefaultsPreferenceStore(defaults: defaults))
         #expect(preferences.language == .system)
         #expect(preferences.theme == .system)
@@ -97,40 +116,38 @@ struct ArchitectureTests {
         let catalogURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("ProjectAlpha/Presentation/Localization/Localizable.xcstrings")
+            .appendingPathComponent(TestValue.catalogPath)
         let catalogData = try Data(contentsOf: catalogURL)
         let catalog = try #require(JSONSerialization.jsonObject(with: catalogData) as? [String: Any])
-        let strings = try #require(catalog["strings"] as? [String: Any])
-        let requiredKeys = Set(CommonKeys.allCases.map(\.rawValue)
-            + CollectionKeys.allCases.map(\.rawValue)
-            + ["Home", "Map", "Settings", "Application", "Version"])
+        let strings = try #require(catalog[TestValue.catalogStringsKey] as? [String: Any])
+        let requiredKeys = Set([CommonKeys.settings.rawValue]
+            + SettingsKeys.allCases.map(\.rawValue)
+            + HomeKeys.allCases.map(\.rawValue)
+            + MapKeys.allCases.map(\.rawValue))
         let supportedLanguageCodes = Set(Language.allCases
             .filter { $0 != .system }
             .map(\.code))
 
         #expect(requiredKeys.isSubset(of: Set(strings.keys)))
-        #expect(catalog["sourceLanguage"] as? String == "en")
-        #expect(catalog["version"] as? String == "1.0")
+        #expect(catalog[TestValue.catalogSourceLanguageKey] as? String == LanguageCode.english)
+        #expect(catalog[TestValue.catalogVersionKey] as? String == TestValue.catalogVersion)
 
-        for (key, rawEntry) in strings {
-            let entry = try #require(rawEntry as? [String: Any], "Missing catalog entry for \(key).")
+        for rawEntry in strings.values {
+            let entry = try #require(rawEntry as? [String: Any])
             let localizations = try #require(
-                entry["localizations"] as? [String: Any],
-                "Missing localizations for \(key)."
+                entry[TestValue.catalogLocalizationsKey] as? [String: Any]
             )
             #expect(Set(localizations.keys) == supportedLanguageCodes)
 
             for languageCode in supportedLanguageCodes {
                 let localization = try #require(
-                    localizations[languageCode] as? [String: Any],
-                    "Missing \(languageCode) translation for \(key)."
+                    localizations[languageCode] as? [String: Any]
                 )
                 let stringUnit = try #require(
-                    localization["stringUnit"] as? [String: Any],
-                    "Missing string unit for \(key) in \(languageCode)."
+                    localization[TestValue.catalogStringUnitKey] as? [String: Any]
                 )
-                #expect(stringUnit["state"] as? String == "translated")
-                #expect(!(stringUnit["value"] as? String ?? "").isEmpty)
+                #expect(stringUnit[TestValue.catalogStateKey] as? String == TestValue.catalogTranslatedState)
+                #expect(!(stringUnit[TestValue.catalogValueKey] as? String ?? String()).isEmpty)
             }
         }
     }
@@ -155,7 +172,7 @@ struct DomainBoundaryTests {
         let id = UUID()
         let assetID = UUID()
         let collection = await Task.detached {
-            Collection(id: id, name: "Travel", icon: .photo(assetID: assetID),
+            Collection(id: id, name: TestValue.collectionName, icon: .photo(assetID: assetID),
                        isDefault: false, createdAt: .distantPast,
                        updatedAt: .distantPast, revision: 3)
         }.value

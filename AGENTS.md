@@ -46,6 +46,7 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 
 ## Architecture boundaries
 
+- Put every source-code string value behind a descriptively named constant or typed enum case before using it. This includes localized UI copy, accessibility identifiers, SF Symbol/asset names, UserDefaults and Info.plist keys, locale IDs, file/path tokens, URL components, log text, format strings, previews, and test fixtures. A literal belongs at its constant or enum-case declaration; do not pass or compare an unexplained string literal directly at a call site. Keep constants in the owning layer/feature, preserve persisted keys and raw values exactly, and keep user-visible localized keys in the appropriate `CommonKeys`, feature keys, or `SettingsKeys` group. Ensure catalog coverage for keys used by shipping views. Compose dynamic strings from named constants or formats. Do not move Domain strings into Presentation or add a cross-layer global string bucket.
 - Domain owns immutable Foundation values, validation, policies, use cases, and ports. It must not import SwiftUI, MapKit, CoreLocation, SwiftData, contain localized UI strings, or depend on app preferences.
 - Data owns SwiftData models/mappers/store, repository implementations, Apple service adapters, and media persistence. It must not own routes, tabs, sheets, or UI copy.
 - Presentation owns `@MainActor` observable state, drafts, routing requests, SwiftUI, map rendering, formatting, and localization. It must not mutate SwiftData or files directly or reimplement business identity rules.

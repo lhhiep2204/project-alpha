@@ -7,6 +7,10 @@
 
 import SwiftUI
 
+private enum EmptyCollectionPreview {
+    static let logMessage = "Add collection tapped"
+}
+
 struct EmptyCollectionView: View {
     let onAddCollection: () -> Void
 
@@ -32,6 +36,6 @@ struct EmptyCollectionView: View {
 
 #Preview {
     EmptyCollectionView {
-        Logger.info("Add collection tapped")
+        Logger.info(EmptyCollectionPreview.logMessage)
     }
 }

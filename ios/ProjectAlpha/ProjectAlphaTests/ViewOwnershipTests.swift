@@ -4,6 +4,14 @@ import UIKit
 import XCTest
 @testable import ProjectAlpha
 
+private enum OwnershipTestValue {
+    static let localeInvalidated = "Locale dependency invalidated"
+    static let featureAppeared = "Feature appeared"
+    static let parentReconstructed = "Parent reconstructed"
+    static let originalModelLost = "The original model must remain owned by SwiftUI @State"
+    static let featureIdentifierPrefix = "feature-"
+}
+
 /// Exercises actual SwiftUI state storage, not just references created in a unit test.
 @MainActor
 final class ViewOwnershipTests: XCTestCase {
@@ -15,7 +23,7 @@ final class ViewOwnershipTests: XCTestCase {
 
     func testLanguageChangesInvalidateObservedLocale() async {
         let preferences = AppPreferences(store: MemoryPreferences())
-        let changed = expectation(description: "Locale dependency invalidated")
+        let changed = expectation(description: OwnershipTestValue.localeInvalidated)
         withObservationTracking {
             _ = preferences.language.locale
         } onChange: {
@@ -23,7 +31,7 @@ final class ViewOwnershipTests: XCTestCase {
         }
         preferences.language = .vietnamese
         await fulfillment(of: [changed], timeout: 1)
-        XCTAssertEqual(preferences.language.locale.identifier, "vi")
+        XCTAssertEqual(preferences.language.locale.identifier, LanguageCode.vietnamese)
     }
 
     private func assertRetained<Model: AnyObject, Content: View>(
@@ -32,12 +40,12 @@ final class ViewOwnershipTests: XCTestCase {
     ) async throws {
         let signal = RenderSignal()
         let probe = ModelProbe()
-        let appeared = expectation(description: "Feature appeared")
-        let updated = expectation(description: "Parent reconstructed")
+        let appeared = expectation(description: OwnershipTestValue.featureAppeared)
+        let updated = expectation(description: OwnershipTestValue.parentReconstructed)
         let host = UIHostingController(rootView: OwnershipHarness(
             signal: signal, probe: probe, factory: factory, content: content,
             appeared: { appeared.fulfill() }, updated: { updated.fulfill() }
-        ))
+        ).environment(AppPreferences(store: MemoryPreferences())))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousKeyWindow = scene.keyWindow
         let window = UIWindow(windowScene: scene)
@@ -54,7 +62,7 @@ final class ViewOwnershipTests: XCTestCase {
         signal.revision += 1
         await fulfillment(of: [updated], timeout: 5)
         XCTAssertGreaterThan(probe.constructions, previousCount)
-        XCTAssertNotNil(probe.first, "The original model must remain owned by SwiftUI @State")
+        XCTAssertNotNil(probe.first, OwnershipTestValue.originalModelLost)
     }
 }
 
@@ -88,7 +96,7 @@ private struct OwnershipHarness<Model: AnyObject, Content: View>: View {
         let model = factory()
         let _ = probe.record(model)
         content(model)
-            .accessibilityIdentifier("feature-\(revision)")
+            .accessibilityIdentifier(OwnershipTestValue.featureIdentifierPrefix + String(revision))
             .onAppear(perform: appeared)
             .onChange(of: revision) { updated() }
     }

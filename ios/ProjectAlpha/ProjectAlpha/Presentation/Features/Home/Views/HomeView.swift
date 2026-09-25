@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct HomeView: View {
+    @Environment(\.locale) private var locale
     @State private var viewModel: HomeViewModel
 
     init(viewModel: HomeViewModel) {
@@ -16,14 +17,15 @@ struct HomeView: View {
 
     var body: some View {
         ContentUnavailableView(
-            "Home",
-            systemImage: "house.fill",
-            description: Text("Home feature content will appear here.")
+            LocalizedStringKey(HomeKeys.title.rawValue),
+            systemImage: DSSystemIcon.homeFill.rawValue,
+            description: Text(HomeKeys.scaffoldMessage)
         )
-        .navigationTitle("Home")
+        .navigationTitle(Text(verbatim: LocalizationManager.localizedString(HomeKeys.title, locale: locale)))
     }
 }
 
 #Preview {
     HomeView(viewModel: .init(router: .init(root: .root)))
+        .environment(\.locale, Locale(identifier: Language.english.code))
 }

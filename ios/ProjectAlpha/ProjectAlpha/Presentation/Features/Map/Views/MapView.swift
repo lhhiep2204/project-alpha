@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct MapView: View {
+    @Environment(\.locale) private var locale
     @State private var viewModel: MapViewModel
 
     init(viewModel: MapViewModel) {
@@ -16,14 +17,17 @@ struct MapView: View {
 
     var body: some View {
         ContentUnavailableView(
-            "Map",
-            systemImage: "map.fill",
-            description: Text("Map feature content will appear here.")
+            LocalizedStringKey(MapKeys.title.rawValue),
+            systemImage: DSSystemIcon.mapFill.rawValue,
+            description: Text(MapKeys.scaffoldMessage)
         )
-        .navigationTitle("Map")
+        .navigationTitle(Text(verbatim: LocalizationManager.localizedString(MapKeys.title, locale: locale)))
     }
 }
 
 #Preview {
-    MapView(viewModel: .init(router: .init(root: .root)))
+    NavigationStack {
+        MapView(viewModel: .init(router: .init(root: .root)))
+    }
+    .environment(\.locale, Locale(identifier: Language.arabic.code))
 }

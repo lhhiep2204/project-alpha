@@ -26,6 +26,7 @@ enum DSSystemIcon: String {
     case copy = "document.on.document"
     case clearText = "multiply.circle.fill"
     case close = "xmark"
+    case checkmark = "checkmark"
 
     // MARK: - D
     case delete = "trash"
@@ -39,6 +40,9 @@ enum DSSystemIcon: String {
     case favorite = "heart.fill"
     case favoriteEmpty = "heart"
     case folder = "folder"
+    case forward = "chevron.forward"
+    case home = "house"
+    case homeFill = "house.fill"
 
     // MARK: - L
     case list = "list.bullet"
@@ -46,6 +50,7 @@ enum DSSystemIcon: String {
 
     // MARK: - M
     case map = "map"
+    case mapFill = "map.fill"
     case more = "ellipsis"
 
     // MARK: - N
@@ -59,6 +64,7 @@ enum DSSystemIcon: String {
     // MARK: - S
     case search = "magnifyingglass"
     case settings = "gear"
+    case settingsTab = "gearshape"
     case share = "square.and.arrow.up"
 
     // MARK: - W

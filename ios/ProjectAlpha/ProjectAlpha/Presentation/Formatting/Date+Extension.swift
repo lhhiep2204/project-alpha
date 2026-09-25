@@ -8,6 +8,8 @@
 import Foundation
 
 extension Date {
+    private static let apiLocaleIdentifier = "en_US_POSIX"
+
     /// Converts the date into a string for user-facing display.
     ///
     /// - Parameter style: The format style to use (e.g. `.dayMonthYear`).
@@ -27,7 +29,7 @@ extension Date {
     func toAPIString(style: DateFormat) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = style.rawValue
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.locale = Locale(identifier: Self.apiLocaleIdentifier)
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         return formatter.string(from: self)
     }

@@ -10,7 +10,7 @@ final class UserDefaultsPreferenceStore: PreferenceStore {
 
     // MARK: - Keys
 
-    private enum Keys {
+    enum Keys {
         static let language = "CURRENT_LANGUAGE"
         static let theme = "APP_THEME"
         static let mapType = "DEFAULT_MAP_TYPE"

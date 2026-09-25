@@ -1,5 +1,29 @@
 import Foundation
 
+/// Stable localization directory identifiers, separate from persisted Language raw values.
+nonisolated enum LanguageCode {
+    static let arabic = "ar"
+    static let bengali = "bn"
+    static let chineseSimplified = "zh-Hans"
+    static let dutch = "nl"
+    static let english = "en"
+    static let french = "fr"
+    static let german = "de"
+    static let hebrew = "he"
+    static let hindi = "hi"
+    static let indonesian = "id"
+    static let italian = "it"
+    static let japanese = "ja"
+    static let korean = "ko"
+    static let portuguese = "pt"
+    static let russian = "ru"
+    static let spanish = "es"
+    static let thai = "th"
+    static let turkish = "tr"
+    static let ukrainian = "uk"
+    static let vietnamese = "vi"
+}
+
 nonisolated enum Language: String, CaseIterable, Sendable {
     case system = "System"
     case arabic = "Arabic"
@@ -26,27 +50,27 @@ nonisolated enum Language: String, CaseIterable, Sendable {
     /// The `lproj` folder code used to locate the correct localization bundle.
     var code: String {
         switch self {
-        case .system: Locale.preferredLanguages.first ?? "en"
-        case .arabic: "ar"
-        case .bengali: "bn"
-        case .chineseSimplified: "zh-Hans"
-        case .dutch: "nl"
-        case .english: "en"
-        case .french: "fr"
-        case .german: "de"
-        case .hebrew: "he"
-        case .hindi: "hi"
-        case .indonesian: "id"
-        case .italian: "it"
-        case .japanese: "ja"
-        case .korean: "ko"
-        case .portuguese: "pt"
-        case .russian: "ru"
-        case .spanish: "es"
-        case .thai: "th"
-        case .turkish: "tr"
-        case .ukrainian: "uk"
-        case .vietnamese: "vi"
+        case .system: Locale.preferredLanguages.first ?? LanguageCode.english
+        case .arabic: LanguageCode.arabic
+        case .bengali: LanguageCode.bengali
+        case .chineseSimplified: LanguageCode.chineseSimplified
+        case .dutch: LanguageCode.dutch
+        case .english: LanguageCode.english
+        case .french: LanguageCode.french
+        case .german: LanguageCode.german
+        case .hebrew: LanguageCode.hebrew
+        case .hindi: LanguageCode.hindi
+        case .indonesian: LanguageCode.indonesian
+        case .italian: LanguageCode.italian
+        case .japanese: LanguageCode.japanese
+        case .korean: LanguageCode.korean
+        case .portuguese: LanguageCode.portuguese
+        case .russian: LanguageCode.russian
+        case .spanish: LanguageCode.spanish
+        case .thai: LanguageCode.thai
+        case .turkish: LanguageCode.turkish
+        case .ukrainian: LanguageCode.ukrainian
+        case .vietnamese: LanguageCode.vietnamese
         }
     }
 
@@ -55,7 +79,7 @@ nonisolated enum Language: String, CaseIterable, Sendable {
         switch self {
         case .arabic, .hebrew: true
         case .system:
-            Locale.Language(identifier: Locale.preferredLanguages.first ?? "en").characterDirection == .rightToLeft
+            Locale.Language(identifier: Locale.preferredLanguages.first ?? LanguageCode.english).characterDirection == .rightToLeft
         default: false
         }
     }

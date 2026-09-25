@@ -32,7 +32,7 @@ struct CollectionItemView: View {
 
             Spacer()
 
-            Text("\(count)")
+            Text(verbatim: count.formatted(.number.locale(locale)))
                 .font(.caption)
                 .lineLimit(1)
         }

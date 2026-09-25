@@ -14,17 +14,17 @@ enum MainTab: Hashable {
 
     var title: LocalizedStringKey {
         switch self {
-        case .home: "Home"
-        case .map: "Map"
-        case .settings: "Settings"
+        case .home: LocalizedStringKey(HomeKeys.title.rawValue)
+        case .map: LocalizedStringKey(MapKeys.title.rawValue)
+        case .settings: LocalizedStringKey(CommonKeys.settings.rawValue)
         }
     }
 
     var systemImage: String {
         switch self {
-        case .home: "house"
-        case .map: "map"
-        case .settings: "gearshape"
+        case .home: DSSystemIcon.home.rawValue
+        case .map: DSSystemIcon.map.rawValue
+        case .settings: DSSystemIcon.settingsTab.rawValue
         }
     }
 }

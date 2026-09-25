@@ -7,6 +7,10 @@
 
 import SwiftUI
 
+private enum RouterMessage {
+    static let missingRoute = "Error: Specified route not found in the navigation stack."
+}
+
 @Observable @MainActor
 final class Router<Route: Hashable> {
     var paths: [Route]
@@ -37,7 +41,7 @@ extension Router {
 
     func popTo(_ route: Route) {
         guard let index = paths.firstIndex(of: route) else {
-            Logger.error("Error: Specified route not found in the navigation stack.")
+            Logger.error(RouterMessage.missingRoute)
             return
         }
         paths = Array(paths.prefix(upTo: index + 1))
