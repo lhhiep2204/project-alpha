@@ -1,8 +1,8 @@
 # ProjectAlpha design specification
 
-Version: 1.2 • Updated: 2026-09-24 • Language: English
+Version: 1.5 • Updated: 2026-10-01 • Language: English
 
-This is the implementation specification for a new, independent app. It describes the intended product, not functionality already implemented. The iOS repository currently contains a three-tab scaffold. No application code was changed when preparing this specification.
+This is the implementation specification for a new, independent app. It describes the intended product, not functionality already implemented. The iOS repository began with a three-tab scaffold; current implementation facts are recorded separately in document 10.
 
 ## Start here
 
@@ -30,6 +30,7 @@ This is the implementation specification for a new, independent app. It describe
 7. Do not claim a feature or acceptance criterion is implemented until code and its specified verification exist. This documentation task does not establish an app build/test pass.
 8. Every app and widget surface follows current Apple Human Interface Guidelines and adapts from available space, size classes and scene geometry. Preserve three top-level destinations while allowing the system to present them as tabs or a sidebar; never branch UI from device model, idiom, orientation, `UIScreen.main` or fixed screen breakpoints.
 9. Use Apple-native containers and controls first. Verify every proposed SDK symbol and availability against the installed SDK and compile a focused use; do not invent an iPhone Duo API or silently change the deployment target when the local toolchain does not yet expose it.
+10. Treat fast launch/interactions, smooth UI and lightweight installation as high-priority requirements in every slice (U-31, D-20). Record comparable performance and size evidence for release acceptance (AC-65/66); do not claim a target or size cap without measurements.
 
 ## Reading by task
 
@@ -45,13 +46,13 @@ This is the implementation specification for a new, independent app. It describe
 
 ## Definition of readiness
 
-The product questions raised during discovery are resolved for the documented v1 scope. This includes quick capture, duplicate-warning behavior, local-only/no-in-app-backup limits and supported capture sources. Saved coordinates are fixed after creation. This readiness applies to specification and implementation planning; actual usability still requires the task-based participant and device validation in document 08. Release identifiers, signing, support email and privacy/support URLs remain release configuration values; they do not block architecture or local feature implementation. See document 08 for release gates.
+The product questions raised during discovery are resolved for the documented v1 scope. This includes quick capture, duplicate-warning behavior, local-only/no-in-app-backup limits, supported capture sources, the initial default-collection title and its edit/delete protection, a fixed folder symbol without collection icon/cover data, animated collection-row deletion and an immediately visible location-list title. Saved coordinates are fixed after creation. This readiness applies to specification and implementation planning; actual usability still requires the task-based participant and device validation in document 08. Release identifiers, signing, support email and privacy/support URLs remain release configuration values; they do not block architecture or local feature implementation. See document 08 for release gates.
 
 ## Documentation verification
 
-Validation on 2026-09-24: documentation links resolve, code fences are balanced, and all 61 acceptance IDs are present exactly once in order. Documentation whitespace checks pass.
+Validation on 2026-10-01: documentation links resolve, code fences are balanced, U-01 through U-31, D-01 through D-20 and AC-01 through AC-66 each occur once in order, and `git diff --check` passes. U-27/D-18 remain as retired identifiers; no acceptance criterion is marked passed by this documentation change.
 
-No app build or automated app tests were run for this documentation-only delivery. `git diff --check -- README.md docs` passed. The untracked iOS source and project settings were read only to verify current-state claims and were preserved.
+No app build, automated app tests or device checks were run for this documentation-only update. The current-state statement in document 10 remains based on its recorded source/project-setting inspection; this documentation change does not establish implementation or pass status for AC-01, AC-02, AC-64 or any other criterion.
 
 ## Implementation records
 

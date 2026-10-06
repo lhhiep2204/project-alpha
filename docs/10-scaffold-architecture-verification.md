@@ -1,6 +1,6 @@
 # Scaffold architecture alignment
 
-Updated: 2026-09-23. Scope: existing app shell, Collection value, preferences and presentation helpers. This is a completion record for the scaffold refactor, not completion of delivery slices P-01 through P-09.
+Scaffold refactor record: 2026-09-23; current-source rechecks: 2026-09-29. Scope: app shell, Collection value, preferences and presentation helpers. Historical build/test results below belong to the scaffold refactor; the current-source rechecks do not establish completion of delivery slices P-01 through P-09.
 
 ## Ownership and dependencies
 
@@ -16,13 +16,13 @@ Updated: 2026-09-23. Scope: existing app shell, Collection value, preferences an
 
 MainTabView accepts typed destination builders and has no dependency on App containers. RouterView binds a borrowed router. Feature factories are cheap and side-effect-free; SwiftUI may call them more than once. A reconstructed view must not replace its active model. Routers do not own feature models, coordinators, views or callbacks, avoiding an ownership cycle.
 
-## Current adaptive-UI gap
+## Current adaptive-UI state and gaps
 
-The checked-out scaffold currently uses a plain three-item SwiftUI `TabView`; each destination is wrapped in a `NavigationStack`. It does not yet use `NavigationSplitView`, tab/sidebar adaptation, size-class or scene-geometry layout policy, iPhone Duo safe/reserved-region handling, or pose/resize preservation tests. A source scan also found no `UIScreen.main`, interface-idiom or orientation branching to remove. This is a current-state record, not evidence that the new adaptive product decision, engineering decisions, invariant or acceptance criteria are implemented.
+The checked-out `MainTabView` has three SwiftUI `Tab` destinations and applies `.sidebarAdaptable` to its `TabView`. Home uses `HomeNavigationView` with `NavigationSplitView`: its selected route comes from the existing Home router's path and drives a detail column, while the system can collapse the split presentation. Map and Settings still use `RouterView` with `NavigationStack`. This is source-level evidence of tab/sidebar and Home split-view wiring, not device evidence that the adaptive contract works across window sizes.
 
-Subsequent feature slices must evolve this shell without creating a second navigation owner: keep the coordinator's three destination identities and logical routes while letting native containers adapt their presentation. Device Hub, iPad resizing, keyboard/pointer and accessibility evidence remains pending as specified in document 08.
+The inspected tab/routing files have no device-model, interface-idiom, orientation or `UIScreen.main` layout branch. They do not yet establish iPhone Duo safe/reserved-region handling, or preservation of user work through pose/window resizing. Device Hub, iPad resizing, keyboard/pointer and accessibility evidence remains pending as specified in document 08. Subsequent feature slices must keep the coordinator's three destination identities and logical routes without creating a second navigation owner.
 
-Domain contains immutable, explicitly nonisolated Sendable Collection and CollectionIcon values. Collection includes a required revision and typed symbol/local-asset icon. Account-sharing scaffolding was removed. Preview fixtures live under Presentation/PreviewSupport and are compiled only in Debug.
+Current source recheck on 2026-09-29: Domain's immutable, explicitly nonisolated Sendable `Collection` has an ID, name, protected-default flag, timestamps and revision, with no icon or cover field. `LibrarySchemaV1.CollectionLocal` likewise has no icon or cover column. Account-sharing scaffolding was removed. Deterministic preview fixtures under `Presentation/PreviewSupport` and adjacent `#Preview` declarations have no `#if DEBUG` guard in the checked-out Swift files; this source inspection does not establish a new Release build result. The app and test project settings still specify Swift 6, iOS 27.0 and iPhone/iPad device family `1,2`.
 
 Shared/Preferences is a narrow Foundation/value and preference-port boundary used by Data and Presentation. It is not a general dependency layer, and Domain does not depend on app settings. MapKit style conversion, localization and display formatting belong to Presentation.
 

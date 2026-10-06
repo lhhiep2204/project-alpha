@@ -46,13 +46,15 @@ Tab roots do not have to be elements of a path. The existing `root` property may
 
 Route values carry IDs and entry intent; they never carry a saved entity snapshot, closure, View, ViewModel, ModelContext or MapKit object. The selected location can change after entry without rewriting the path. SwiftUI supports programmatic paths for deep links and restoration. [Apple navigation guidance](https://developer.apple.com/documentation/swiftui/understanding-the-navigation-stack)
 
+When Home opens a collection, it may supply the tapped name as a scene-local title hint outside the route value. This lets Collection Detail render its navigation title on its first displayed frame while loading the current record by ID. The loaded name replaces a stale hint; deleted or unrestorable IDs use the missing-entity path. Deep links/restoration carry only IDs and must resolve current data before presenting an authoritative title.
+
 ## SceneCoordinator responsibilities
 
 The coordinator owns selected tab, the three routers, modal ownership, pending external intent and navigation restoration. It references map-session presentation models through narrow interfaces. It does not own every form field or implement repository operations itself.
 
 | Event | Result |
 |---|---|
-| Select Collection | Push its list in Home |
+| Select Collection | Push its ID-based list in Home and provide the tapped name as an immediate scene-local title hint |
 | Find Saved Places | Preserve Home path/filter; select Map tab and present Global Map search with `All Saved Places` scope |
 | Select list Location | Push/activate that collection's map, focus ID and open detail |
 | Show All | Push/activate that collection's map and issue fit-all camera intent |

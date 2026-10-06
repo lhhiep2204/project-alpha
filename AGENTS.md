@@ -19,19 +19,19 @@ These instructions govern every task in this repository, including work delegate
 
 ## Required reading by task
 
-Always read docs 01, 03, 04, 08, and 10 plus the relevant feature document:
+For every implementation slice, read `docs/README.md`, docs 01, 03, 04, 08, and the exact feature documents needed for the requested slice. Do not read unrelated feature documents or the full specification set for every task.
 
-- Collection/location CRUD or editors: docs 02 and 04.
+- Ambiguous, cross-cutting, or new product work: `projectalpha_spec_tracer` reads docs 01, 03, 04, 08, and 10 plus relevant feature documents, then gives downstream agents the exact contract IDs and reading set.
+- Collection/location CRUD: docs 02 and 04.
 - Navigation, restoration, or external intents: docs 05 and 07.
 - Maps, search, location detail, position, ETA, directions, or sharing: docs 02, 05, 06, and 09.
 - Widgets: docs 04, 05, 07, and 09.
 - Persistence, concurrency, or media: docs 03, 04, and 08.
 - Settings, localization, accessibility, or release configuration: docs 01, 02, 08, and 09.
-- Any app or widget UI, navigation, layout, component, or UX work: docs 01, 02, 05, 08, and 09 plus the current official Apple Human Interface Guidelines for iOS, iPadOS, Layout, and the relevant component. iPhone Duo work must also read Apple's current Designing for iPhone Duo guidance and associated developer documentation.
+- Current scaffold or project-setting claims: docs 10 plus the relevant source/project settings.
+- UI/API adoption: read current Apple guidance and verify the declaration/availability only when the task uses that API or acceptance evidence.
 
-Before adopting an Apple API, verify the declaration and availability in the installed SDK or current official Apple documentation, then compile a focused use. Do not invent API names from summaries or snippets.
-
-The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need simulator/Xcode evidence must use it to discover the scheme and installed simulator, build/install/launch when applicable, inspect the accessibility/UI tree, capture screenshots/logs, and re-read state after interactions. Do not guess simulator state from source or coordinates alone. Xcode MCP availability is an environment capability, not a pass condition: if unavailable, report `BLOCKED` with the exact tool/environment error and do not claim UI/device evidence. Store screenshots, logs, result bundles, and traces outside the repository unless the task explicitly owns an artifact path.
+The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need simulator/Xcode evidence must use it through the project config and `device-interaction` skill. If unavailable, report `BLOCKED`; do not claim UI/device evidence. Keep screenshots, logs, result bundles, and traces outside the repository.
 
 ## Working-tree safety
 
@@ -56,6 +56,13 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 - Factories and initializers must be cheap and side-effect-free. Start and cancel observation through structured lifecycle tasks or explicit start/stop methods.
 - Preserve Swift 6 isolation. Do not use `@unchecked Sendable`, `nonisolated(unsafe)`, detached work, or global mutable state to hide an ownership or concurrency error.
 
+## Performance and app size priority (U-31, D-20, AC-65/66)
+
+- Fast response, smooth interaction, and a small app footprint are first-order product requirements for every slice, including app, widget, and supporting assets. Each agent must consider startup, main-thread work, scrolling/map interaction, memory, disk use, and binary/resource size within its ownership before declaring its work complete.
+- Keep expensive persistence queries, image decoding/downsampling, snapshot generation, and other heavy work away from the UI actor where the owning API permits. Load only data and media needed for the visible task, bound caches and concurrent work, cancel work that is no longer needed, and avoid duplicate observations or repeated computation during view updates. Preserve correctness, accessibility, and the approved behavior while optimizing.
+- Add dependencies, bundled assets, persisted copies, caches, or background work only when justified by a concrete feature need and their size/runtime cost. Prefer existing Apple frameworks and shared assets. Do not add an optimization that creates stale data, lost work, or a hidden correctness tradeoff.
+- For a change likely to affect responsiveness, memory, launch, or footprint, state the expected impact and the measurement needed in the handoff. Record device, OS, build configuration, dataset, metric, baseline, and result when measured; report an unmeasured target as unverified. AC-65/66 and the physical-device workload and provisional latency targets are in document 08. Record app/archive and installed-size changes at release gates; no numeric size budget has been approved.
+
 ## Adaptive Apple UI/UX contract
 
 - Treat current Apple Human Interface Guidelines as the platform design authority. Prefer standard SwiftUI containers and controls so navigation, presentation, safe areas, bar placement, input, accessibility, and appearance inherit system behavior. A custom component needs a documented task-specific reason and equivalent accessibility/input behavior.
@@ -71,6 +78,7 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 
 - Preserve INV-01 through INV-09 and the exact duplicate policy in docs 04. Provider identity intersection blocks; the approved normalized coordinate/name fallback blocks; proximity at or below 20 metres warns; a same name at a remote coordinate does not warn by itself.
 - Exactly one protected default collection exists after bootstrap. A saved location has exactly one existing owner. Cross-collection copies are independent records.
+- Every collection uses the Folder symbol. Collection icon selection and collection cover photos are outside the product and data model; location photos remain in scope.
 - A write validates against current data and commits atomically. Do not suspend between read/check/mutate/save in the store's critical section. Emit success only after persistence succeeds.
 - Never delete committed media before the database removes its reference. Prefer recoverable orphan files over lost user files.
 - Quick capture, detailed editing, and retry use one stable draft identity and the same commit-time validation.
@@ -84,7 +92,7 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 3. For a bug, reproduce or establish the failure from evidence, identify the owning layer, and define a regression test at the lowest meaningful boundary.
 4. Make the smallest coherent change inside the assigned agent's ownership. Request a handoff for cross-owner files instead of expanding scope silently.
 5. Keep deterministic seams for clocks, IDs, provider requests, permission states, media files, and failures. Never depend on live Apple search in automated tests or wall-clock sleeps for correctness.
-6. Run focused verification, then the relevant broader build/test gate. A successful build alone does not satisfy an acceptance criterion.
+6. Run the smallest affected verification, then let the final build gate run the applicable broader checks once. A successful build alone does not satisfy an acceptance criterion.
 7. Update product decisions and acceptance criteria together only when the product owner approved a behavior/scope change. A normal bug fix should not rewrite the specification.
 
 ## Verification and reporting
@@ -96,14 +104,18 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 - Distinguish product failures from simulator service, sandbox, signing, or environment failures.
 - Run `git diff --check`; when source is untracked, also inspect those files because Git diff does not cover them.
 - Never claim device, accessibility, RTL, widget, performance, or participant testing unless it was actually run in the required environment.
+- Include performance and size impact in each implementation handoff, even when the impact is expected to be negligible. Reviewers and gates check for avoidable main-thread stalls, unbounded work/caches, unnecessary resources, and measured regressions within their assigned evidence scope.
 - Every completion report must state: assigned scope, affected AC/INV/D identifiers, changed files, exact commands and results, manual checks, remaining limitations, and any approved deviation.
 - Implementers may report `implementation complete; independent verification pending`. Only the primary orchestrator may declare an AC or slice `READY`/`PASSED`, and only after every applicable independent test, review, build, and device gate has reported current evidence.
+- The acceptance-test engineer authors/updates tests and may run only newly affected tests for fast feedback; it does not run the full suite or final UI matrix. The build-verification gatekeeper is the single authoritative final test/build runner.
+- Run the full test suite, Release build, widget build, adaptive source audit, or device QA only when the changed slice or assigned AC requires it. Architecture review owns semantic adaptive/concurrency review; the build gate owns final execution and mechanical checks.
 
 ## Project skill routing
 
 - Project skills live under `.agents/skills/`. Load the relevant `SKILL.md` and its referenced material when the task matches; all agents working in this repository can use these skills.
 - For SwiftUI implementation or review, use `swiftui-specialist`.
 - For every production SwiftUI `View` a task creates or materially changes—including screens, subviews, reusable components, and generic view wrappers—add at least one `#Preview` next to the view. Give it representative deterministic inputs and preview-only fixtures; do not connect previews to live services or persistent user data. If a production view cannot be previewed without violating an architecture boundary, document the specific blocker in the handoff. Test-only view harnesses do not need previews.
+- Keep `#Preview` declarations and their deterministic fixture types available in every build configuration. SwiftUI preview macros do not affect the released app at runtime, so do not surround them or their fixtures with `#if DEBUG`. Keep preview fixtures free of live services and persistent user data.
 - For new or changed iOS 27 SwiftUI APIs, or related SDK 27 compiler errors, use `swiftui-whats-new-27`. Follow this repository's SDK declaration, availability, and focused-compile checks before adopting an API.
 - For simulator or device UI evidence, use ProjectAlpha's `.agents/skills/device-interaction` workflow and the Xcode MCP requirements above.
 - Use `modernize-tests` when the user requests test modernization or a test task explicitly calls for migrating legacy tests. Do not migrate tests opportunistically; preserve the Swift Testing and critical XCTest UI boundaries above.
@@ -118,4 +130,4 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 - Production implementers modify only their declared ownership area and do not edit test-target files.
 - `projectalpha_acceptance_test_engineer` owns automated test-target changes and does not modify production code.
 - `projectalpha_architecture_concurrency_reviewer`, `projectalpha_build_verification_gatekeeper`, and `projectalpha_device_ux_qa` are independent read-only gates.
-- The recommended sequence is: spec trace or bug investigation -> owning implementer(s) -> acceptance tests -> architecture/concurrency review -> build gate -> device/UX QA when applicable.
+- The default sequence is risk-based: triage -> owning implementer -> affected tests -> final build gate. Add spec tracing for ambiguous/cross-cutting work, architecture review for high-risk state/concurrency changes, and device QA only when the assigned AC requires manual/device evidence.

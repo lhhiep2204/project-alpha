@@ -3,22 +3,54 @@ import SwiftUI
 struct AppRootView: View {
     let container: AppContainer
     @State private var coordinator = SceneCoordinator()
+    @State private var repository: (any CollectionRepository)?
+    @State private var libraryFailed = false
 
     var body: some View {
         let language = container.preferences.language
         let theme = container.preferences.theme
 
-        MainTabView(coordinator: coordinator) { route in
-            switch route {
-            case .root: container.homeContainer.makeHomeView(router: coordinator.homeRouter)
-            }
-        } map: { route in
-            switch route {
-            case .root: container.mapContainer.makeMapView(router: coordinator.mapRouter)
-            }
-        } settings: { route in
-            switch route {
-            case .root: container.settingsContainer.makeSettingsView(router: coordinator.settingsRouter)
+        Group {
+            if let repository {
+                MainTabView(coordinator: coordinator) { route, selection in
+                    switch route {
+                    case .root:
+                        container.homeContainer.makeHomeView(
+                            router: coordinator.homeRouter,
+                            repository: repository,
+                            selection: selection
+                        )
+                    case .collection(let id):
+                        container.homeContainer.makeCollectionDetailView(
+                            id: id,
+                            repository: repository,
+                            router: coordinator.homeRouter
+                        )
+                        .id(id)
+                    }
+                } map: { route in
+                    switch route {
+                    case .root: container.mapContainer.makeMapView(router: coordinator.mapRouter)
+                    }
+                } settings: { route in
+                    switch route {
+                    case .root: container.settingsContainer.makeSettingsView(router: coordinator.settingsRouter)
+                    }
+                }
+            } else if libraryFailed {
+                ContentUnavailableView {
+                    Label {
+                        Text(CollectionKeys.storageUnavailable)
+                    } icon: {
+                        Image.appSystemIcon(.folder)
+                    }
+                } actions: {
+                    Button(CollectionKeys.retry) {
+                        Task { await loadLibrary() }
+                    }
+                }
+            } else {
+                ProgressView()
             }
         }
         .environment(coordinator)
@@ -26,11 +58,33 @@ struct AppRootView: View {
         .environment(\.locale, LocalizationManager.locale(for: language))
         .environment(\.layoutDirection, LocalizationManager.layoutDirection(for: language))
         .preferredColorScheme(ThemeManager.preferredColorScheme(for: theme))
+        .task { await loadLibrary() }
+    }
+
+    private func loadLibrary() async {
+        guard repository == nil else { return }
+        do {
+            let opened = try await container.collectionRepository()
+            let defaultName = LocalizationManager.localizedString(
+                CollectionKeys.defaultCollectionName,
+                locale: LocalizationManager.locale(for: container.preferences.language)
+            )
+            _ = try await opened.bootstrap(BootstrapCollectionCommand(
+                id: UUID(),
+                name: defaultName,
+                createdAt: .now
+            ))
+            repository = opened
+            libraryFailed = false
+        } catch {
+            libraryFailed = true
+        }
     }
 }
 
-#if DEBUG
 #Preview {
-    AppRootView(container: AppContainer(preferenceStore: PreviewPreferenceStore()))
+    AppRootView(container: AppContainer(
+        preferenceStore: PreviewPreferenceStore(),
+        collectionRepositoryOverride: PreviewCollectionRepository()
+    ))
 }
-#endif

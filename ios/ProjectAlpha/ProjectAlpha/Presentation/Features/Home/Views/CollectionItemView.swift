@@ -11,22 +11,24 @@ struct CollectionItemView: View {
     @Environment(\.locale) private var locale
     let collection: Collection
     let count: Int
+    let creationDateText: String
 
     var body: some View {
         HStack(spacing: DSSpacing.medium) {
             ZStack {
                 RoundedRectangle(cornerRadius: DSRadius.xxLarge)
                     .fill(.gray.opacity(0.15))
-                    .frame(width: DSSize.huge, height: DSSize.huge)
+                    .frame(width: DSSpacing.huge + DSSpacing.xSmall, height: DSSpacing.huge + DSSpacing.xSmall)
 
                 Image.appSystemIcon(.folder)
+                    .accessibilityHidden(true)
             }
 
             VStack(alignment: .leading, spacing: DSSpacing.xSmall) {
                 Text(collection.name)
                     .font(.headline)
                     .lineLimit(1)
-                Text(collection.createdAt.toString(style: .dayMonthYear, locale: locale))
+                Text(verbatim: creationDateText)
                     .font(.caption)
             }
 
@@ -36,12 +38,22 @@ struct CollectionItemView: View {
                 .font(.caption)
                 .lineLimit(1)
         }
+        .frame(minHeight: DSSpacing.huge + DSSpacing.xSmall)
     }
 }
 
-#if DEBUG
 #Preview {
-    CollectionItemView(collection: .mock, count: 3)
-        .padding()
+    CollectionItemView(
+        collection: .mock,
+        count: 3,
+        creationDateText: Collection.mock.createdAt.formatted(
+            Date.FormatStyle(
+                date: .abbreviated,
+                time: .omitted,
+                locale: Locale(identifier: LanguageCode.english)
+            )
+        )
+    )
+    .padding()
+    .environment(\.locale, Locale(identifier: LanguageCode.english))
 }
-#endif

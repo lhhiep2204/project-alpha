@@ -128,6 +128,8 @@ Feature models observe their relevant queries. Collection counts, locations, fav
 
 The widget publisher subscribes once at the integration boundary. It reads a consistent snapshot from the store and publishes the highest committed revision. Views do not call `refreshWidgetSnapshot()` after each button press. Foreground/startup also reconciles snapshots after interruption.
 
+Performance and footprint are cross-cutting design constraints (U-31, D-20). Keep feature initialization cheap, avoid repeated per-row fetches or eager full-size image decoding, and measure any added startup, query, rendering, media or extension cost on representative workloads. Maintain correctness and the existing ownership boundaries while moving expensive work away from the main actor. Review app and extension resources and dependencies for their contribution to build and installed size; record comparable release measurements rather than asserting an unmeasured size target.
+
 ## Use-case and port boundaries
 
 | Operation | Domain responsibility | Data/integration responsibility |

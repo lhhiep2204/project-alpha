@@ -1,12 +1,34 @@
 [agents]
 enabled = true
 max_concurrent_threads_per_session = 4
+default_subagent_reasoning_effort = "medium"
 interrupt_message = true
 
-# XcodeBuildMCP via Apple's xcrun MCP bridge. UI/device-capable custom agents
-# also declare this server explicitly in their own TOML for fresh sessions.
+# XcodeBuildMCP via Apple's xcrun MCP bridge. Custom agents inherit this
+# project-level server unless a task explicitly requires a separate server.
 [mcp_servers.xcode]
 command = "xcrun"
 args = ["mcpbridge"]
 enabled = true
 startup_timeout_sec = 30.0
+
+[mcp_servers.xcode.tools.XcodeListWorkspaces]
+approval_mode = "approve"
+
+[mcp_servers.xcode.tools.XcodeListRunDestinations]
+approval_mode = "approve"
+
+[mcp_servers.xcode.tools.XcodeListSchemes]
+approval_mode = "approve"
+
+[mcp_servers.xcode.tools.DeviceInteractionStartWorkspaceSession]
+approval_mode = "approve"
+
+[mcp_servers.xcode.tools.DeviceInteractionInstallAndRun]
+approval_mode = "approve"
+
+[mcp_servers.xcode.tools.DeviceInteractionSynthesize]
+approval_mode = "approve"
+
+[mcp_servers.xcode.tools.DeviceInteractionEndSession]
+approval_mode = "approve"

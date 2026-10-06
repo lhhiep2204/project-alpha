@@ -71,11 +71,10 @@ struct SettingsView: View {
 
     private func languageName(for language: Language) -> String {
         Locale(identifier: language.code).localizedString(forIdentifier: language.code)
-            ?? language.rawValue
+        ?? language.rawValue
     }
 }
 
-#if DEBUG
 #Preview {
     NavigationStack {
         SettingsView(viewModel: .init(router: .init(root: .root)))
@@ -84,4 +83,3 @@ struct SettingsView: View {
     .environment(\.locale, Locale(identifier: Language.english.code))
     .preferredColorScheme(.light)
 }
-#endif

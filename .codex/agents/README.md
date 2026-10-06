@@ -1,36 +1,25 @@
 # ProjectAlpha custom agents
 
-These project-scoped agents follow the repository `AGENTS.md` and the approved design in `docs/`.
+These project-scoped agents follow the repository `AGENTS.md` and the approved design in `docs/`. They are optional specialists; a request must not automatically run every agent or every gate.
 
-## Clarification gate
+## Routing and token policy
 
-Every custom agent stops and asks the user as soon as any question, uncertainty, ambiguity, contradiction, missing requirement, unclear ownership, API/support doubt, or unclear evidence expectation arises. An agent must not assume an answer, select a default, expand scope, or continue the affected change until the user responds. Read-only fact gathering may continue only when it cannot commit the task to one of the unresolved choices.
+The primary agent performs a lightweight risk triage first: docs/read-only, small bug, Domain/Data, UI/navigation, or cross-cutting/release. Use `projectalpha_spec_tracer` only for new cross-cutting work, unclear requirements, or work spanning multiple ownership areas. A clear, narrow request can go directly to its owner.
+
+`AGENTS.md` is the source of truth for clarification, ownership, working-tree safety, architecture, and evidence rules. Do not repeat those rules in every handoff. Never run two write-capable agents against the same file at the same time. Subagents consume additional tokens, so each one gets a narrow scope and returns a concise evidence summary rather than raw logs.
+
+Every owner applies the `AGENTS.md` performance and app-size priority to its slice. Handoffs state the expected impact on startup, interaction smoothness, memory, storage, and bundled size as relevant, plus actual measurements or the remaining evidence needed. Architecture review checks avoidable work and unbounded resource use; build/release gates record size changes; device QA measures responsiveness on the documented physical-device workload. Do not label estimates as measured results.
 
 ## Adaptive Apple UI/UX ownership
 
-All UI work follows the current Apple Human Interface Guidelines for iOS, iPadOS, Layout, the relevant system component, and iPhone Duo. Layout decisions use available space, size classes, scene geometry, safe areas, layout margins, and SDK-verified APIs—not device models, idiom/orientation checks, `UIScreen.main`, or fixed screen breakpoints. Prefer standard system containers and controls, preserve state and functionality across every adaptation, and keep custom interactive targets at least 44 by 44 points with touch, keyboard, pointer, and accessibility alternatives.
-
-- `projectalpha_scene_navigation_engineer` owns the adaptive tab/sidebar, `NavigationSplitView`/stack, route, selection, collapse, and expansion behavior.
-- `projectalpha_library_workflow_engineer`, `projectalpha_map_location_services_engineer`, `projectalpha_settings_localization_accessibility_engineer`, and `projectalpha_widget_integration_engineer` own adaptive rendering inside their existing feature boundaries.
-- `projectalpha_composition_integrator` owns only required scene/project configuration and wiring; it does not take over feature layout.
-- `projectalpha_acceptance_test_engineer` covers deterministic resize/state continuity; the architecture reviewer audits adaptive anti-patterns; the build gate records SDK/runtime availability; and device UX QA executes the iPad resizing, multi-input, accessibility, and iPhone Duo matrices.
-
-At the 2026-09-23 baseline, local Xcode 27.0 does not expose every API described by Apple's iPhone Duo/Xcode 27.1 documentation. Recheck the active toolchain on every relevant task. No agent may invent those APIs, silently change the deployment target, or claim Duo evidence from an ordinary iPhone/iPad simulator. Verify declarations and availability with the installed SDK, compile a focused use, and report `BLOCKED` when the required Xcode 27.1 Device Hub/runtime is unavailable.
+- Scene navigation owns the adaptive tab/sidebar and stack/split route shell.
+- Feature owners own adaptive rendering inside their existing boundaries; composition owns only wiring.
+- Architecture review checks semantic state continuity and anti-patterns; device QA owns actual resize, input, accessibility, and Duo evidence.
+- Follow the adaptive contract in `AGENTS.md`. Xcode 27.1/Duo limitations remain `BLOCKED`; never substitute an ordinary simulator or invent an API.
 
 ## Xcode MCP access
 
-The project config declares the `xcode` MCP server as `xcrun mcpbridge`. It is explicitly attached to the agents that need simulator/Xcode evidence: `projectalpha_bug_investigator`, `projectalpha_composition_integrator`, `projectalpha_scene_navigation_engineer`, `projectalpha_library_workflow_engineer`, `projectalpha_map_location_services_engineer`, `projectalpha_widget_integration_engineer`, `projectalpha_settings_localization_accessibility_engineer`, `projectalpha_acceptance_test_engineer`, `projectalpha_build_verification_gatekeeper`, and `projectalpha_device_ux_qa`.
-
-Those agents must discover the scheme and installed simulator, build/install/launch as needed, inspect the UI/accessibility tree, capture screenshots/logs, and re-read UI state after interactions. If the Xcode MCP server is unavailable in the current host/session, they must report `BLOCKED` and cannot claim simulator or device verification.
-
-### Xcode MCP runbook
-
-1. Confirm the selected Xcode instance, project/workspace, scheme, and an installed iOS 27 simulator.
-2. Build/install/launch the relevant target through Xcode MCP or the paired build command; keep artifacts in a unique temporary directory.
-3. Capture a baseline UI tree/screenshot before interacting. Prefer accessibility identifiers/labels over coordinates.
-4. Re-read the tree after every navigation, tap, text entry, scroll, deep-link, or widget action; capture logs/crash output when relevant.
-5. Compare actual behavior to the assigned AC and report exact simulator/device/runtime, evidence paths, and any blocked capability. A screenshot or UI tree is evidence, not an automatic pass.
-6. For adaptive UI work, capture state before and after every tested resize, compact/regular transition, iPad window arrangement, or iPhone Duo display/pose change. Confirm the selected IDs, navigation path, map state, active draft, accessible actions, safe/reserved regions, and system bar overflow rather than judging screenshots alone.
+The project-level `xcode` MCP server is declared in `.codex/config.toml`; custom agents inherit it. Keep the detailed simulator/device runbook in `.agents/skills/device-interaction/SKILL.md`. If the server or required runtime is unavailable, report `BLOCKED` and do not claim device evidence.
 
 ## Discovery and diagnosis
 
@@ -63,12 +52,18 @@ Those agents must discover the scheme and installed simulator, build/install/lau
 | `projectalpha_build_verification_gatekeeper` | Read-only execution and classification of build/test/whitespace gates. |
 | `projectalpha_device_ux_qa` | Read-only device, localization, accessibility, widget, and performance acceptance evidence. |
 
-## Recommended workflows
+## Risk-based workflows
 
-- New feature: `projectalpha_spec_tracer` -> relevant production owner(s) in dependency order -> `projectalpha_acceptance_test_engineer` -> `projectalpha_architecture_concurrency_reviewer` -> `projectalpha_build_verification_gatekeeper` -> `projectalpha_device_ux_qa` when the AC requires device evidence.
-- Bug: `projectalpha_bug_investigator` -> owning production agent -> `projectalpha_acceptance_test_engineer` -> both independent review/build gates.
-- Approved contract change: `projectalpha_spec_tracer` identifies the exact U/D/INV/AC impact; after product-owner approval, `projectalpha_contract_maintainer` updates only README/docs.
-- Cross-cutting work: let `projectalpha_spec_tracer` split the work. Do not run two write-capable agents against the same files at the same time.
-- A production agent must hand Xcode project, entitlement, or target-membership edits to `projectalpha_composition_integrator`.
+- Docs/read-only: primary agent only, or `projectalpha_contract_maintainer` after explicit product-owner approval; run documentation checks only.
+- Small clear bug: owner -> affected regression test -> final build gate. Use `projectalpha_bug_investigator` only when reproduction/root cause is uncertain. Add architecture review for concurrency, persistence, routing, or invariant risk.
+- Domain/Data/Persistence: owner -> affected tests -> architecture review when atomicity, concurrency, identity, or lifecycle is involved -> final build gate. No device QA.
+- UI/navigation: feature owner -> model/UI tests -> architecture review when state/routing/lifecycle is involved -> final build gate -> device QA only when the AC requires manual/device evidence.
+- New cross-cutting or release/widget work: `projectalpha_spec_tracer` -> non-overlapping production owners -> acceptance-test author -> architecture review -> final build gate -> device QA only for applicable ACs.
+
+Production agents provide the smallest deterministic test matrix and may run a focused smoke check; they do not run the full suite by default. The acceptance-test agent authors/updates tests and may run only newly affected tests to catch authoring errors; it does not run the full suite or final UI matrix. The build gate is the single authoritative final runner. Adaptive source review belongs to the architecture reviewer, while device UX QA owns actual manual/device evidence.
+
+A production agent must hand Xcode project, entitlement, or target-membership edits to `projectalpha_composition_integrator`.
 
 Custom-agent format follows the official OpenAI Codex project-agent convention: one TOML file per agent under `.codex/agents/`.
+
+SwiftUI owners keep `#Preview` and deterministic preview fixtures available in every build configuration, without `#if DEBUG` wrappers. The build gate checks Release compilation and flags preview-only conditional compilation that hides broken fixtures.

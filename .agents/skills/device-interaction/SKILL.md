@@ -15,6 +15,12 @@ Use the Xcode MCP server for simulator or device evidence. Read the repository's
 4. Check the requested user outcome, including persistence or relaunch behavior only when that is part of the requirement. Do not erase simulator data or reset settings as a shortcut.
 5. Store screenshots, logs, and traces outside the repository. End the device session when interaction is finished. Report the exact device/runtime, actions, evidence paths, and any blocked cases.
 
+## Recover a lost interaction session
+
+- Use the exact `interactionSessionKey` returned by the current start call. Keep each session focused and end it promptly. On this project's Xcode 27.0 setup, service logs showed two sessions removed about two minutes after their last UI call. Prepare the build, QA steps, and subagent before starting a session; perform UI calls promptly and analyze saved media after ending the session. If `DeviceInteractionSynthesize` reports `Session not found`, stop using that key, start a new session with a unique identifier, and delegate UI events for the new session as required below. Reinstall and run when the debug session has disconnected. A lost session may be recoverable without restarting the simulator.
+- If a new start reports that the device is already in use by the lost key, but `DeviceInteractionEndSession` says that key does not exist, treat this as stale Xcode MCP service state. First ensure no other agent is actively using the service. Check `xcrun mcp-server status --format json`, then use the installed Xcode toolchain's `xcrun mcp-server stop` and `xcrun mcp-server open <absolute-project.xcodeproj>` to restart the service and reopen the project. The old MCP transport may close; reconnect with a fresh agent session before retrying. Do not reset the simulator or erase its data to repair an MCP session.
+- Confirm recovery with a new start and end before claiming UI evidence. If the service remains unavailable, report the exact tool error and mark the device check blocked.
+
 ## Xcode MCP subagent requirement
 
 When a device-session response says that UI events must be performed by a subagent, do not synthesize events from the parent task. Delegate the interaction to the `projectalpha_device_ux_qa` role and tell it to load this `device-interaction` skill before acting. Give it the current workspace identifier and session key. If the skill is not available to that subagent, stop before interacting and report the exact missing-skill/tool error; do not claim UI evidence.

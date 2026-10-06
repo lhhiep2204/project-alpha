@@ -6,13 +6,13 @@ Authority: [product decisions](01-product-and-decisions.md). Technical routing i
 
 | ID | Screen | Entry and exit | Required content/actions |
 |---|---|---|---|
-| S-01 | Home | Home tab root | Collections, icon, count, search by collection name, create/edit/delete, Find Saved Places entry |
-| S-02 | Collection Detail | Push from Home; Back to Home | Name, location list, local search, favorites filter, add, Show All on Map, location actions |
+| S-01 | Home | Home tab root | Collections with a fixed folder symbol and count, search by collection name, create and non-default edit/delete, Find Saved Places entry |
+| S-02 | Collection Detail | Push from Home; Back to Home | Collection name as immediate navigation title, location list, local search, favorites filter, add, Show All on Map, location actions |
 | S-03 | Collection Map | Push from S-02; Back to S-02 | Scope title, scoped saved pins, search, save, current position, fit all, detail |
 | S-04 | Global Map | Map tab root | All saved pins, search, save, current position, fit all, detail |
 | S-05 | Location Detail | Selection on either map | Name, address, coordinate, collection for saved items, notes/photos, bounded related locations, quick save/share/directions actions |
 | S-06 | Place Search | From either map or new-location editor | Saved results in applicable scope; separate Apple Maps results; loading/error/empty states |
-| S-07 | Collection Editor | Create/edit sheet or editor subflow | Name and icon/photo; Save/Cancel |
+| S-07 | Collection Editor | Create/edit sheet or editor subflow | Name; Save/Cancel |
 | S-08 | Location Editor | Add details/edit sheet | Destination collection, place/coordinate source, optional custom name/notes/photos; Save/Cancel |
 | S-09 | Collection Picker | Inside Location Editor | All collection names, selected destination, create collection inline |
 | S-10 | Photo Viewer | From editor/detail | Full-size local image, paging, zoom, Close; no implicit photo edits |
@@ -32,7 +32,7 @@ All actions remain discoverable and operable with touch, keyboard, trackpad/poin
 
 1. Load versioned local storage, preferences and scene restoration state.
 2. Ensure exactly one default collection in the same serialized store used by CRUD.
-3. Present Home on fresh launch, with the default collection and a count of zero. Do not display an impossible "no collections" state after successful bootstrap.
+3. Present Home on fresh launch, with the default collection and a count of zero. Do not present a zero-collection empty view after successful bootstrap; an empty search result remains possible when the query matches no collection.
 4. Existing installations restore valid navigation state; an incoming valid deep link takes precedence over restoration.
 5. Storage failure shows a recovery screen with Retry. Never quietly replace persistent data with an empty in-memory store.
 6. Do not request location, camera or photo-library permission just to view Home.
@@ -41,13 +41,17 @@ All actions remain discoverable and operable with touch, keyboard, trackpad/poin
 
 Home uses a native List with search, swipe actions and a context menu. Its search field filters collection names only. A separate, clearly labeled Find Saved Places action opens Global Map search with an `All Saved Places` scope; returning preserves Home's path and collection filter. Default collection appears first; remaining collections sort by `createdAt` descending, UUID ascending as a stable tie-breaker. Counts come from committed data, not view callbacks.
 
-Create/edit uses a draft with name and either a built-in SF Symbol icon or one local cover image. A generic folder is the fallback. Name is trimmed, required and at most 30 grapheme clusters. Duplicate collection names are allowed; their IDs remain distinct. Pickers and overlapping-pin choices disambiguate identical names with the collection icon and count, plus creation date when those still collide; VoiceOver receives the same context. The app may warn that a name already exists but never silently renames a collection. A default collection may be renamed/redecorated but not deleted, demoted or duplicated. Its initial title is localized at creation and persisted as a normal name; later language changes do not rewrite it. A user rename is literal user content.
+Every collection row uses the same folder symbol. When collections share the same name, count and creation date, each affected Home row visibly includes its localized creation time. VoiceOver announces that time alongside the row's other identifying details.
 
-Delete a non-default collection requires a confirmation naming the collection and the current number of locations that will be deleted. Commit parent and children together; clean their media after commit. A failed delete retains the data and displays a retryable error. A successful delete invalidates affected selections, paths, counts, search results and widget snapshots.
+Create/edit for non-default collections uses a name-only draft. There is no icon picker or cover-photo control; every collection displays the fixed folder symbol without an icon/cover field in collection data. Name is trimmed, required and at most 30 grapheme clusters. Duplicate collection names are allowed; their IDs remain distinct. Pickers and overlapping-pin choices disambiguate identical names with location count and creation date/time when needed; VoiceOver receives the same context. The app may warn that a name already exists but never silently renames a collection. The default collection has no edit or delete affordance and cannot be renamed, deleted, demoted or duplicated. Its initial English title is “My Places”, localized for the language in effect at creation and persisted unchanged across later language changes.
+
+Delete a non-default collection requires a confirmation naming the collection and the current number of locations that will be deleted. Commit parent and children together; clean their media after commit. A failed delete retains the data and displays a retryable error without removing its row. After a successful commit, visibly animate that row out and close the list gap using native list motion; honor Reduce Motion without delaying interaction. A successful delete also invalidates affected selections, paths, counts, search results and widget snapshots.
 
 An inline-created collection is saved immediately as its own operation and selected in the parent Location Editor. Cancelling that location draft does not delete the new collection.
 
 ## J-03 — Open a collection and its map
+
+Tapping a collection opens its location list with the collection name in the navigation title on the first displayed frame. The tapped row's name can provide an immediate scene-local hint while the latest record loads; the route remains ID-based and the title updates if that record has since been renamed. A stale or deleted ID follows the missing-entity contract rather than showing the hint as authoritative content.
 
 Collection Detail lists locations newest-created first with UUID tie-breaker. Show custom name when nonempty, otherwise the provider/manual name. Include address and favorite state. Support local search and favorites-only filtering; preserve these while pushing/popping its map or switching tabs. Leaving the collection for Home resets the local filters.
 
@@ -120,7 +124,7 @@ Use ProjectAlpha-specific support email and privacy URL when configured. During 
 | State | Required presentation |
 |---|---|
 | Loading | Progress with navigation still understandable; no false empty list |
-| Empty collection | Add Place and Show All on Map remain available |
+| Collection with zero locations | In Collection Detail, show the empty location state; Add Place and Show All on Map remain available |
 | Empty search | No matching saved/provider results, with query retained |
 | Provider unavailable | Saved content remains usable; retry provider search |
 | Permission denied | Explain the affected action and Settings option; do not block library |

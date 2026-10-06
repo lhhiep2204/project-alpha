@@ -6,8 +6,7 @@ All values crossing isolation boundaries are `Sendable`. UUIDs identify saved re
 
 | Value | Required fields / meaning |
 |---|---|
-| Collection | `id: UUID`, `name: String`, `isDefault: Bool` (system-controlled), `icon: CollectionIcon`, `createdAt`, `updatedAt`, `revision: Int64` |
-| CollectionIcon | `.symbol(name)` or `.photo(assetID)`; fallback folder |
+| Collection | `id: UUID`, `name: String`, `isDefault: Bool` (system-controlled), `createdAt`, `updatedAt`, `revision: Int64`. No icon or cover field; Presentation displays the fixed folder symbol for every collection. |
 | SavedLocation | `id`, `collectionID`, `placeIdentity?`, `source`, `name`, optional `displayName`, optional `address`, `coordinate`, optional `category`, optional `notes`, ordered `[LocalAssetReference]`, `isFavorite`, timestamps, revision |
 | Coordinate | Finite latitude `[-90,90]`, longitude `[-180,180]`; absence is optional, never encoded as `(0,0)` |
 | PlaceIdentity | `provider = appleMaps`, nonempty opaque `primaryID`, set of nonempty `alternateIDs`; no lowercasing/semantic parsing of provider IDs |
@@ -24,7 +23,7 @@ Existing ProjectAlpha `Collection.visibility` and `share` fields are scaffold ar
 
 | ID | Invariant |
 |---|---|
-| INV-01 | Exactly one default collection exists after successful bootstrap. Its flag cannot be changed by user commands and it cannot be deleted. |
+| INV-01 | Exactly one default collection exists after successful bootstrap. User commands cannot edit its fields, including its name and default flag, or delete it. |
 | INV-02 | Every saved location references one existing collection. Unresolved candidates never enter persistent location storage. |
 | INV-03 | Same known place cannot be inserted twice into the same collection; cross-collection copies are independent records. Apply the identity limits below honestly. |
 | INV-04 | Deleting a collection and its locations is one database commit. No partial child deletion on failure. |
@@ -101,7 +100,7 @@ Idempotence is separate from place equivalence: allocate a stable draft Location
 
 | Model | Persistence responsibility |
 |---|---|
-| CollectionLocal | Unique UUID, name, system-controlled default flag, icon representation, timestamps/revision |
+| CollectionLocal | Unique UUID, name, system-controlled default flag, timestamps/revision; no icon or cover column |
 | LocationLocal | Unique UUID, collectionID, provider/primary/alias fields, source, name/display name/address, latitude/longitude, category/notes, ordered asset IDs, favorite, timestamps/revision |
 | AssetLocal | Unique asset UUID, relative file token, content type, dimensions and creation time; owner reference maintained by serialized writes |
 | LibraryMetadataLocal | Single metadata key, schema-related application metadata and monotonically increasing library revision |
@@ -115,7 +114,7 @@ UUID uniqueness is a persistence guard, not the duplicate-place policy. SwiftDat
 
 ### Bootstrap
 
-Open/migrate the store before navigation consumes data. Inside the store actor, fetch default collections; if none exists, create one and commit. If exactly one exists, keep it. User-facing create/update commands cannot set/unset `isDefault`. Sequential bootstrap calls are idempotent. Multiple defaults from corruption or a future migration trigger a recoverable diagnostic, never a destructive reset. The single writer ensures concurrent scene startup cannot create two defaults.
+Open/migrate the store before navigation consumes data. Inside the store actor, fetch default collections; if none exists, create one with the localized initial title for the language in effect at creation (English source: “My Places”) and commit. Persist the resulting text as the default collection's fixed name: later language changes do not rename it, and user commands cannot edit it. If exactly one default exists, keep it and its current name. User-facing create/update commands cannot set/unset `isDefault`; user-facing update/delete commands reject the default collection without changing records. Sequential bootstrap calls are idempotent. Multiple defaults from corruption or a future migration trigger a recoverable diagnostic, never a destructive reset. The single writer ensures concurrent scene startup cannot create two defaults.
 
 ### Atomic mutation contract
 
@@ -133,13 +132,13 @@ The conflict result carries the latest immutable domain value while retaining th
 
 ## Media lifecycle
 
-Photos and collection covers are local files in Application Support, referenced by stable tokens. A location supports at most five images; a collection supports one cover image or a built-in symbol. Expose remaining location-photo capacity before selection and reject a sixth asset before staging. Use PhotosPicker for selected library assets and a camera adapter when available. Camera absence on simulator/iPad configurations is handled gracefully. Report import/decode failures per asset while retaining the rest of the draft for retry/removal.
+Location photos are local files in Application Support, referenced by stable tokens. A location supports at most five images; collections have no media assets. Expose remaining location-photo capacity before selection and reject a sixth asset before staging. Use PhotosPicker for selected library assets and a camera adapter when available. Camera absence on simulator/iPad configurations is handled gracefully. Report import/decode failures per asset while retaining the rest of the draft for retry/removal.
 
 Stage selected media under a draft ID. Validate and downsample off the UI actor; use a 1600-pixel longest side and JPEG quality 0.78 as tunable encoding defaults. Use ImageIO downsampling rather than loading a full-resolution photo simply to make a thumbnail. Preserve orientation; explicitly strip unnecessary GPS metadata. User-visible thumbnails load asynchronously with a bounded cache.
 
 Before database commit, finalize new files atomically under stable final tokens. If database commit fails, keep new files tracked by the draft for retry/cancel; they must not become untracked leaks. Old files remain untouched. After commit, schedule removed files for deletion using MediaCleanupLocal, then retire staged ownership. Database and filesystem changes are not one ACID transaction: this ordering favors recoverable orphan files over lost user photos.
 
-On cancellation delete only the draft's uncommitted assets. On startup reconcile abandoned drafts/unreferenced finalized files using a grace period and current ownership; never delete active draft assets or a file still referenced by another record. Cleanup checks references again before deletion and retries failures. Photo viewers show a placeholder for missing/corrupt files without crashing.
+On cancellation delete only the location draft's uncommitted assets. On startup reconcile abandoned location-photo drafts and unreferenced finalized files against current ownership. Never delete active draft assets or a file still referenced by another record; recheck ownership and references immediately before deletion. Cleanup retries failures. Photo viewers show a placeholder for missing/corrupt files without crashing.
 
 ## Recovery and future changes
 

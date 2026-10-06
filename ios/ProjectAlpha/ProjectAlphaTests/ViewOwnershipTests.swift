@@ -16,7 +16,16 @@ private enum OwnershipTestValue {
 @MainActor
 final class ViewOwnershipTests: XCTestCase {
     func testFeatureModelsSurviveParentReconstruction() async throws {
-        try await assertRetained(factory: { HomeViewModel(router: .init(root: .root)) }, content: HomeView.init)
+        let repository = SwiftDataCollectionRepository(store: LibraryStore(
+            container: try LibraryStoreConfiguration.makeContainer(isStoredInMemoryOnly: true)
+        ))
+        try await assertRetained(factory: {
+            HomeViewModel(
+                router: .init(root: .root),
+                repository: repository,
+                useCases: CollectionUseCases(repository: repository)
+            )
+        }, content: { HomeView(viewModel: $0, selection: .constant(nil)) })
         try await assertRetained(factory: { MapViewModel(router: .init(root: .root)) }, content: MapView.init)
         try await assertRetained(factory: { SettingsViewModel(router: .init(root: .root)) }, content: SettingsView.init)
     }
@@ -45,7 +54,9 @@ final class ViewOwnershipTests: XCTestCase {
         let host = UIHostingController(rootView: OwnershipHarness(
             signal: signal, probe: probe, factory: factory, content: content,
             appeared: { appeared.fulfill() }, updated: { updated.fulfill() }
-        ).environment(AppPreferences(store: MemoryPreferences())))
+        )
+            .environment(AppPreferences(store: MemoryPreferences()))
+            .environment(SceneCoordinator()))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousKeyWindow = scene.keyWindow
         let window = UIWindow(windowScene: scene)

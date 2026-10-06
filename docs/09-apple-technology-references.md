@@ -1,6 +1,6 @@
 # Apple technology baseline and references
 
-Platform references reviewed on 2026-09-24; local toolchain and SDK evidence verified on 2026-09-23. Product baseline is iOS/iPadOS 27. Use current Apple-native capabilities when they serve the requirements; an API need not have been introduced in iOS 27 to be the correct choice. Apple's current Human Interface Guidelines and iPhone Duo guidance are product-design authority, while the selected installed SDK remains the authority for symbols that can compile.
+Platform references reviewed through 2026-09-29; local toolchain and SDK evidence verified on 2026-09-23. Product baseline is iOS/iPadOS 27. Use current Apple-native capabilities when they serve the requirements; an API need not have been introduced in iOS 27 to be the correct choice. Apple's current Human Interface Guidelines and iPhone Duo guidance are product-design authority, while the selected installed SDK remains the authority for symbols that can compile.
 
 ## Local toolchain evidence
 
@@ -51,6 +51,7 @@ Apple's current iPhone Duo guidance describes Xcode 27.1 Device Hub, full-screen
 | Navigation | Typed paths, ID-based destinations, scene restoration | [Understanding the navigation stack](https://developer.apple.com/documentation/swiftui/understanding-the-navigation-stack) |
 | Adaptive hierarchy | Stack on compact space; use system split/adjacent columns where wider hierarchy benefits | [NavigationSplitView](https://developer.apple.com/documentation/swiftui/navigationsplitview) |
 | Top-level destinations | Preserve Home/Map/Settings while allowing system tab/sidebar adaptation | [Tab bars](https://developer.apple.com/design/human-interface-guidelines/tab-bars) |
+| Collection list motion | Use a standard list for deletion feedback and accommodate Reduce Motion; ProjectAlpha's successful-delete timing and first-frame title are product requirements | [Lists and tables](https://developer.apple.com/design/human-interface-guidelines/lists-and-tables), [Motion](https://developer.apple.com/design/human-interface-guidelines/motion) |
 | Native design | Standard controls and restrained Liquid Glass | [Adopting Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass), [Materials](https://developer.apple.com/design/human-interface-guidelines/materials) |
 | Search UX | One clear global retrieval entry plus visibly scoped local search | [Searching](https://developer.apple.com/design/human-interface-guidelines/searching) |
 | Data entry UX | Quick capture with optional details and explicit validation | [Entering data](https://developer.apple.com/design/human-interface-guidelines/entering-data) |

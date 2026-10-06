@@ -17,6 +17,9 @@ private enum TestValue {
     static let catalogVersion = "1.1"
     static let catalogLocalizationsKey = "localizations"
     static let catalogStringUnitKey = "stringUnit"
+    static let catalogVariationsKey = "variations"
+    static let catalogPluralKey = "plural"
+    static let catalogOtherKey = "other"
     static let catalogStateKey = "state"
     static let catalogTranslatedState = "translated"
     static let catalogValueKey = "value"
@@ -25,6 +28,20 @@ private enum TestValue {
 
 @MainActor
 struct ArchitectureTests {
+    /// D-01: app composition supplies preview collection data through its repository override.
+    @Test func previewRepositoryOverrideSuppliesCollectionSnapshot() async throws {
+        let preview = PreviewCollectionRepository()
+        let app = AppContainer(
+            preferenceStore: PreviewPreferenceStore(),
+            collectionRepositoryOverride: preview
+        )
+        let supplied = try await app.collectionRepository()
+        let expected = try await preview.snapshot()
+        #expect(try await supplied.snapshot() == expected)
+        #expect(try await app.collectionRepository().snapshot() == expected)
+        #expect(expected.collections.map(\.id) == [Collection.mock.id])
+    }
+
     @Test func scenesKeepIndependentNavigation() {
         let first = SceneCoordinator()
         let second = SceneCoordinator()
@@ -38,7 +55,7 @@ struct ArchitectureTests {
         #expect(first.mapRouter.paths.isEmpty)
     }
 
-    @Test func sceneAndFeatureModelsAreReleased() {
+    @Test func sceneAndFeatureModelsAreReleased() throws {
         weak var scene: SceneCoordinator?
         weak var home: HomeViewModel?
         weak var map: MapViewModel?
@@ -46,7 +63,14 @@ struct ArchitectureTests {
         weak var router: Router<HomeRoute>?
         do {
             let owner = SceneCoordinator()
-            let homeModel = HomeViewModel(router: owner.homeRouter)
+            let repository = SwiftDataCollectionRepository(store: LibraryStore(
+                container: try LibraryStoreConfiguration.makeContainer(isStoredInMemoryOnly: true)
+            ))
+            let homeModel = HomeViewModel(
+                router: owner.homeRouter,
+                repository: repository,
+                useCases: CollectionUseCases(repository: repository)
+            )
             let mapModel = MapViewModel(router: owner.mapRouter)
             let settingsModel = SettingsViewModel(router: owner.settingsRouter)
             scene = owner
@@ -143,11 +167,29 @@ struct ArchitectureTests {
                 let localization = try #require(
                     localizations[languageCode] as? [String: Any]
                 )
-                let stringUnit = try #require(
-                    localization[TestValue.catalogStringUnitKey] as? [String: Any]
-                )
-                #expect(stringUnit[TestValue.catalogStateKey] as? String == TestValue.catalogTranslatedState)
-                #expect(!(stringUnit[TestValue.catalogValueKey] as? String ?? String()).isEmpty)
+                var stringUnits: [[String: Any]] = []
+                if let direct = localization[TestValue.catalogStringUnitKey] as? [String: Any] {
+                    stringUnits.append(direct)
+                } else {
+                    let variations = try #require(
+                        localization[TestValue.catalogVariationsKey] as? [String: Any]
+                    )
+                    let plural = try #require(
+                        variations[TestValue.catalogPluralKey] as? [String: Any]
+                    )
+                    #expect(plural[TestValue.catalogOtherKey] != nil)
+                    for rawForm in plural.values {
+                        let form = try #require(rawForm as? [String: Any])
+                        stringUnits.append(try #require(
+                            form[TestValue.catalogStringUnitKey] as? [String: Any]
+                        ))
+                    }
+                }
+                #expect(!stringUnits.isEmpty)
+                for stringUnit in stringUnits {
+                    #expect(stringUnit[TestValue.catalogStateKey] as? String == TestValue.catalogTranslatedState)
+                    #expect(!(stringUnit[TestValue.catalogValueKey] as? String ?? String()).isEmpty)
+                }
             }
         }
     }
@@ -170,16 +212,14 @@ struct ArchitectureTests {
 struct DomainBoundaryTests {
     @Test func collectionCrossesActorBoundaryAsAValue() async {
         let id = UUID()
-        let assetID = UUID()
         let collection = await Task.detached {
-            Collection(id: id, name: TestValue.collectionName, icon: .photo(assetID: assetID),
+            Collection(id: id, name: TestValue.collectionName,
                        isDefault: false, createdAt: .distantPast,
                        updatedAt: .distantPast, revision: 3)
         }.value
         let returned = await CollectionEcho().echo(collection)
         #expect(returned == collection)
         #expect(returned.id == id)
-        #expect(returned.icon == .photo(assetID: assetID))
         #expect(returned.revision == 3)
     }
 }

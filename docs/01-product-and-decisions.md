@@ -1,6 +1,6 @@
 # Product and decisions
 
-Status: approved design baseline. Product decisions below reflect discovery decisions confirmed through 2026-09-23.
+Status: approved design baseline. Product decisions below reflect decisions confirmed through 2026-10-01.
 
 ## Product intent
 
@@ -8,7 +8,11 @@ ProjectAlpha saves and organizes places in collections for everyday use, travel 
 
 The first implementation targets iPhone, including iPhone Duo, on iOS 27 and iPad on iPadOS 27. Every app and widget surface must remain a single coherent experience as its available space changes. There is no compatibility requirement for earlier OS releases, macOS, visionOS, watchOS or Android in this delivery.
 
+Fast launch and interaction, smooth scrolling and map use, and a lightweight app installation are high-priority product qualities across every delivery slice. Feature work must account for their cost and provide comparable evidence before release.
+
 ## Confirmed decisions
+
+Retired IDs remain in sequence for traceability and are not current requirements.
 
 | ID | Requirement |
 |---|---|
@@ -19,9 +23,9 @@ The first implementation targets iPhone, including iPhone Duo, on iOS 27 and iPa
 | U-05 | Collection Detail has Show All on Map. It fits the camera to all locations in the collection. |
 | U-06 | Collection Map initially targets its own collection when saving. The user may choose another destination collection; this changes only the save destination. |
 | U-07 | The Map tab displays saved locations across all collections and supports searching and saving places. |
-| U-08 | Each saved Location record belongs to exactly one Collection. Keep a default collection that cannot be deleted. Deleting another collection deletes its locations. |
+| U-08 | Each saved Location record belongs to exactly one Collection. Keep a default collection that cannot be edited, renamed or deleted. Deleting another collection deletes its locations. |
 | U-09 | Prevent duplicate places within a collection. Allow independent records for the same place in different collections. |
-| U-10 | Keep favorites, notes, location photos, collection images/icons, arbitrary map pins, distance/ETA, external directions, location sharing, widgets and deep links. |
+| U-10 | Keep favorites, notes, location photos, a fixed folder symbol for collections, arbitrary map pins, distance/ETA, external directions, location sharing, widgets and deep links. |
 | U-11 | Sharing a location uses the system share sheet and an Apple Maps link. Account-based collection sharing and collaboration are future placeholders. |
 | U-12 | Compact available width uses a bottom sheet; wider layouts use an adjacent detail panel when space permits. Closing detail keeps the map open. |
 | U-13 | Collection Map hides the current top-level tab/sidebar chrome and uses Back to return to its collection's location list. |
@@ -36,6 +40,13 @@ The first implementation targets iPhone, including iPhone Duo, on iOS 27 and iPa
 | U-22 | Local-only storage without in-app backup/restore is an accepted v1 limitation. Settings must state that there is no in-app sync or backup/restore; do not imply verified device-backup behavior. |
 | U-23 | Every app and widget surface follows current Apple Human Interface Guidelines and uses native adaptive presentation across iPhone, iPad and iPhone Duo. Preserve the same functionality, hierarchy and user work at all supported window sizes and device poses. |
 | U-24 | Settings lets the user choose app appearance using System, Light or Dark. The choice applies across the app and persists. System follows the platform appearance; Light and Dark select the corresponding appearance. |
+| U-25 | The protected default collection is initially titled “My Places” in English. Localize that title for the language in effect at creation, then persist that title; later language changes do not rename it, and users cannot edit it. |
+| U-26 | Every collection displays the same folder symbol. Creating or editing a collection offers no icon choice or cover photo, and collection data has no icon or cover field. This applies to all collections; no preproduction legacy-data migration is required. |
+| U-27 | Retired by U-26: the collection-cover cleanup rule does not apply because collection covers are removed before production. Location-photo media cleanup remains required under INV-06 and INV-08. |
+| U-28 | When collections share the same name, location count and creation date, each affected Home row visibly includes its localized creation time, and VoiceOver announces that time with the row's identifying context. |
+| U-29 | After a confirmed successful collection deletion, its Home row visibly animates out as the list closes the gap; a failed deletion leaves the row present. Respect Reduce Motion. |
+| U-30 | Tapping a collection opens its location list with the collection name visible as the navigation title from the first displayed frame, without waiting for the detail query. |
+| U-31 | Prioritize fast launch and interactions, smooth UI, and lightweight app size throughout v1 development and release verification. |
 
 ## Vocabulary
 
@@ -56,13 +67,13 @@ The first implementation targets iPhone, including iPhone Duo, on iOS 27 and iPa
 
 | Feature | ProjectAlpha v1 requirement |
 |---|---|
-| Collection CRUD | Home is the collection list; support create, edit and protected deletion |
-| Default collection | Guarantee exactly one through persistence bootstrap |
+| Collection CRUD | Home is the collection list; support create, edit and delete for non-default collections |
+| Default collection | Guarantee exactly one through persistence bootstrap, initially named “My Places” in English and localized once at creation; no edit or delete action |
 | Location CRUD and moving collection | Support local create, edit, move and delete; check duplicates on create and move; saved coordinates are fixed |
 | Favorites | Store independently on each saved record and expose in lists, detail and widget |
 | Notes and custom name | Support local editing and persistence |
 | Location photos | Support up to five local photos with transactional media handling |
-| Collection image/icon | Support one local photo or built-in symbol |
+| Collection symbol | Display the same folder symbol for every collection; no collection icon or cover data |
 | Search | Search saved places in the active scope and search Apple Maps separately; Home exposes an entry to global saved-place search |
 | Arbitrary pin/coordinate entry | Support dropped pins and manual coordinate input when creating a location; saved coordinates are fixed |
 | Distance and ETA | Show route mode and useful failure state when route estimates are unavailable |
@@ -97,6 +108,9 @@ The v1 feature set is defined by U-10, U-16 and this table. Future placeholders 
 | D-15 | Possible-duplicate warnings use the approved proximity rule. Name equality without proximity is searchable context, not an interruption. |
 | D-16 | Preserve Home, Map and Settings as exactly three top-level destinations while allowing the system to render native tab/sidebar forms. Use a compact navigation stack and standard `NavigationSplitView`/split or adjacent presentations when the content hierarchy benefits from wider available space. Make layout decisions from available space, size classes and scene geometry, never device model, interface idiom, orientation, `UIScreen.main` or fixed screen breakpoints. Prefer standard controls and minimize modal presentation on iPad. |
 | D-17 | Treat resize, multitasking and iPhone Duo pose changes as continuous layout changes. Honor each safe-area edge, asymmetric margins and SDK-exposed reserved regions; let standard navigation/tool/tab bars move vertically where the system chooses, with labeled actions, explicit priority and useful overflow. Preserve routes, selections, map scope/camera/search, drafts/staged media and functionality while supporting touch, keyboard, trackpad/pointer, Dynamic Type, RTL, VoiceOver, Voice Control, Switch Control, Reduce Motion and Reduce Transparency. Custom interactive targets are at least 44 by 44 points. |
+| D-18 | Retired by U-26: no collection-cover files remain in the target data model. Location-photo reconciliation remains governed by document 04 and INV-06/08. |
+| D-19 | Keep collection routes ID-only. On a Home selection, pass the tapped collection name as a scene-local presentation hint so the list title is available immediately; reconcile with the latest loaded record, and never treat the hint as entity identity or restored authority. |
+| D-20 | Evaluate startup, local queries, scrolling/map interaction and binary/installed size as features are added. Keep heavy persistence, image and provider work off the main actor where ownership allows; use bounded projections, thumbnails and lazy loading where appropriate. Record comparable measurements and investigate repeatable regressions before release. No app-size ceiling is specified without measured evidence and product-owner approval. |
 
 ## Offline behavior
 

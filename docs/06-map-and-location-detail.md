@@ -50,7 +50,7 @@ Fallback order is retained camera, saved-scope fit, usable last position when al
 
 ## Saved pins and overlapping places
 
-Use saved-record UUIDs for annotation identity. Global Map can have independent records for the same Apple place in several collections. Preserve those records; overlapping annotations must provide a disambiguation affordance listing collection name, icon and count, plus creation date when identical names still collide. VoiceOver exposes the same context. Group coincident saved pins for display or use a native selection list, but do not deduplicate database records across collections. Selecting an item opens the correct UUID's notes/photos/favorite state.
+Use saved-record UUIDs for annotation identity. Global Map can have independent records for the same Apple place in several collections. Preserve those records; overlapping annotations must provide a disambiguation affordance listing collection name and location count, plus creation date/time when identical names still collide. Every collection uses the same folder symbol, so it is not distinguishing context. VoiceOver exposes the same identifying context. Group coincident saved pins for display or use a native selection list, but do not deduplicate database records across collections. Selecting an item opens the correct UUID's notes/photos/favorite state.
 
 Use accessible Buttons or native selection for annotations, not gesture-only tappable images. Expose the selected state and collection name to VoiceOver. Unselected Apple POIs remain provider content; selecting one resolves a candidate.
 

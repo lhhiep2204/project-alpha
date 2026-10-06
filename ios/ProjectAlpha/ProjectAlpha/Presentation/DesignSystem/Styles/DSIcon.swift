@@ -14,12 +14,13 @@ enum DSIcon: String {
 }
 
 /// A design system enum that defines system-provided SF Symbols used in the app.
-enum DSSystemIcon: String {
+nonisolated enum DSSystemIcon: String {
     // MARK: - A
     case add = "plus"
 
     // MARK: - B
     case back = "chevron.backward"
+    case bookmark = "bookmark"
 
     // MARK: - C
     case camera = "camera"
@@ -51,6 +52,7 @@ enum DSSystemIcon: String {
     // MARK: - M
     case map = "map"
     case mapFill = "map.fill"
+    case mappin = "mappin"
     case more = "ellipsis"
 
     // MARK: - N
@@ -66,6 +68,7 @@ enum DSSystemIcon: String {
     case settings = "gear"
     case settingsTab = "gearshape"
     case share = "square.and.arrow.up"
+    case star = "star"
 
     // MARK: - W
     case wifi = "wifi"
@@ -85,7 +88,7 @@ extension Image {
     ///
     /// - Parameter icon: The `DSSystemIcon` case representing the SF Symbol name.
     /// - Returns: An `Image` instance initialized with the specified system icon name.
-    static func appSystemIcon(_ icon: DSSystemIcon) -> Self {
+    nonisolated static func appSystemIcon(_ icon: DSSystemIcon) -> Self {
         .init(systemName: icon.rawValue)
     }
 }
