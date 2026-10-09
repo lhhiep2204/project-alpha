@@ -1,3 +1,10 @@
+//
+//  Language.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 20/9/26.
+//
+
 import Foundation
 
 /// Stable localization directory identifiers, separate from persisted Language raw values.

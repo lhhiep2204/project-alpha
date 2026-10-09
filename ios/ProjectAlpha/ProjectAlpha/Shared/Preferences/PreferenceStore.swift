@@ -1,3 +1,10 @@
+//
+//  PreferenceStore.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 20/9/26.
+//
+
 /// Small app-preference boundary, not a business-domain repository.
 /// Access is serialized on MainActor; background work receives copied values.
 @MainActor

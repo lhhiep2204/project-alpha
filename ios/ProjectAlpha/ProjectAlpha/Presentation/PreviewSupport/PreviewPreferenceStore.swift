@@ -1,3 +1,10 @@
+//
+//  PreviewPreferenceStore.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 20/9/26.
+//
+
 @MainActor
 final class PreviewPreferenceStore: PreferenceStore {
     var language: Language = .system

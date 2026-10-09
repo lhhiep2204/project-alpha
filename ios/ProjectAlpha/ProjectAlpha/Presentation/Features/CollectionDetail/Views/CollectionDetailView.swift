@@ -1,15 +1,24 @@
+//
+//  CollectionDetailView.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 26/9/26.
+//
+
 import SwiftUI
 
 struct CollectionDetailView: View {
     @Environment(SceneCoordinator.self) private var coordinator
+    @Environment(\.locale) private var locale
     @State private var viewModel: CollectionDetailViewModel
+    @State private var observationAttempt = 0
 
     init(viewModel: CollectionDetailViewModel) {
         _viewModel = State(initialValue: viewModel)
     }
 
     var body: some View {
-        Group {
+        ZStack {
             switch viewModel.phase {
             case .loading:
                 ProgressView()
@@ -27,7 +36,7 @@ struct CollectionDetailView: View {
                     }
                 } actions: {
                     Button(CollectionKeys.retry) {
-                        Task { await observe() }
+                        observationAttempt &+= 1
                     }
                 }
             case .ready:
@@ -42,16 +51,22 @@ struct CollectionDetailView: View {
                 }
             }
         }
-        .navigationTitle(viewModel.displayTitle(
-            hint: coordinator.collectionTitleHint(for: viewModel.collectionID)
-        ))
-        .task { await observe() }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle(displayTitle)
+        .task(id: observationAttempt) { await observe() }
     }
 
     private func observe() async {
         await viewModel.observe {
             coordinator.clearCollectionTitleHint(for: viewModel.collectionID)
         }
+    }
+
+    private var displayTitle: String {
+        if viewModel.collection?.collection.isDefault == true {
+            return LocalizationManager.localizedString(CollectionKeys.defaultCollectionName, locale: locale)
+        }
+        return viewModel.displayTitle(hint: coordinator.collectionTitleHint(for: viewModel.collectionID))
     }
 }
 

@@ -1,3 +1,10 @@
+//
+//  Collection.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 19/9/26.
+//
+
 import Foundation
 
 /// Immutable committed value. Editing belongs to a separate draft/command.

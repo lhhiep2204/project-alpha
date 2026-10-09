@@ -73,23 +73,6 @@ struct HomeView: View {
                 )
             }
         }
-        .confirmationDialog(
-            Text(verbatim: deleteTitle),
-            isPresented: $showDeleteConfirmation,
-            presenting: deleteTarget
-        ) { summary in
-            Button(role: .destructive) {
-                Task { await attemptDelete(summary) }
-            } label: {
-                Text(CommonKeys.delete)
-            }
-        } message: { summary in
-            Text(verbatim: CollectionKeys.deleteCollectionMessage(
-                name: summary.collection.name,
-                count: Int64(summary.locationCount),
-                locale: locale
-            ))
-        }
         .alert(Text(CollectionKeys.deleteFailed), isPresented: $showDeleteError) {
             Button(CollectionKeys.retry) {
                 if let deleteTarget { Task { await attemptDelete(deleteTarget) } }
@@ -111,7 +94,21 @@ struct HomeView: View {
             Text(CollectionKeys.collectionChanged)
         }
         .task(id: viewModel.observationID) {
+            viewModel.setLocalizedDefaultCollectionName(
+                LocalizationManager.localizedString(CollectionKeys.defaultCollectionName, locale: locale)
+            )
             await viewModel.observe()
+        }
+        .onChange(of: locale) { _, newLocale in
+            viewModel.setLocalizedDefaultCollectionName(
+                LocalizationManager.localizedString(CollectionKeys.defaultCollectionName, locale: newLocale)
+            )
+            if case let .collection(id) = selection {
+                coordinator.setCollectionTitleHint(
+                    id: id,
+                    name: displayName(for: id, locale: newLocale)
+                )
+            }
         }
     }
 
@@ -128,7 +125,7 @@ struct HomeView: View {
         let layoutDirection = LocalizationManager.layoutDirection(for: preferences.language)
         return List(selection: collectionSelection) {
             ForEach(viewModel.visibleCollections) { summary in
-                let creationDateText = rowDates[summary.id] ?? String()
+                let creationDateText = summary.collection.isDefault ? String() : (rowDates[summary.id] ?? String())
                 NavigationLink(value: HomeRoute.collection(id: summary.id)) {
                     CollectionItemView(
                         collection: summary.collection,
@@ -154,6 +151,23 @@ struct HomeView: View {
                         deleteButton(for: summary)
                     }
                 }
+                .confirmationDialog(
+                    Text(verbatim: deleteTitle),
+                    isPresented: deleteConfirmation(for: summary.id),
+                    presenting: deleteTarget
+                ) { target in
+                    Button(role: .destructive) {
+                        Task { await attemptDelete(target) }
+                    } label: {
+                        Text(CommonKeys.delete)
+                    }
+                } message: { target in
+                    Text(verbatim: CollectionKeys.deleteCollectionMessage(
+                        name: target.collection.name,
+                        count: Int64(target.locationCount),
+                        locale: locale
+                    ))
+                }
             }
             if viewModel.visibleCollections.isEmpty {
                 ContentUnavailableView.search(text: viewModel.searchText)
@@ -176,7 +190,12 @@ struct HomeView: View {
                 }
                 if let route, case let .collection(id) = route,
                    let summary = viewModel.collections.first(where: { $0.id == id }) {
-                    coordinator.setCollectionTitleHint(id: id, name: summary.collection.name)
+                    coordinator.setCollectionTitleHint(
+                        id: id,
+                        name: summary.collection.isDefault
+                            ? LocalizationManager.localizedString(CollectionKeys.defaultCollectionName, locale: locale)
+                            : summary.collection.name
+                    )
                 }
                 selection = route
             }
@@ -196,7 +215,7 @@ struct HomeView: View {
     }
 
     private func deleteButton(for summary: CollectionSummary) -> some View {
-        Button(role: .destructive) {
+        Button {
             deleteTarget = summary
             showDeleteConfirmation = true
         } label: {
@@ -206,6 +225,17 @@ struct HomeView: View {
                 Image.appSystemIcon(.delete)
             }
         }
+        .tint(.red)
+    }
+
+    private func deleteConfirmation(for collectionID: UUID) -> Binding<Bool> {
+        Binding(
+            get: { showDeleteConfirmation && deleteTarget?.id == collectionID },
+            set: { isPresented in
+                guard deleteTarget?.id == collectionID else { return }
+                showDeleteConfirmation = isPresented
+            }
+        )
     }
 
     private var deleteTitle: String {
@@ -221,13 +251,27 @@ struct HomeView: View {
         formatter: ListFormatter,
         folderLabel: String
     ) -> String {
+        let name = summary.collection.isDefault
+            ? LocalizationManager.localizedString(CollectionKeys.defaultCollectionName, locale: locale)
+            : summary.collection.name
+        if summary.collection.isDefault {
+            let count = CollectionKeys.locationCount(Int64(summary.locationCount), locale: locale)
+            return formatter.string(from: [name, count, folderLabel]) ?? name
+        }
         let summaryText = CollectionKeys.collectionRowSummary(
-            name: summary.collection.name,
+            name: name,
             count: Int64(summary.locationCount),
             createdDate: createdDate,
             locale: locale
         )
         return formatter.string(from: [summaryText, folderLabel]) ?? summaryText
+    }
+
+    private func displayName(for id: UUID, locale: Locale) -> String {
+        guard let summary = viewModel.collections.first(where: { $0.id == id }) else { return String() }
+        return summary.collection.isDefault
+            ? LocalizationManager.localizedString(CollectionKeys.defaultCollectionName, locale: locale)
+            : summary.collection.name
     }
 }
 
@@ -291,8 +335,14 @@ enum CollectionRowDatePresentation {
                 date: summary.collection.createdAt.formatted(dayStyle)
             )
         }
-        let counts = Dictionary(keys.map { ($0, 1) }, uniquingKeysWith: +)
+        let counts = Dictionary(
+            zip(collections, keys)
+                .filter { !$0.0.collection.isDefault }
+                .map { ($0.1, 1) },
+            uniquingKeysWith: +
+        )
         return Dictionary(uniqueKeysWithValues: zip(collections, keys).map { summary, key in
+            guard !summary.collection.isDefault else { return (summary.id, String()) }
             let date = counts[key, default: 0] > 1
             ? summary.collection.createdAt.formatted(timeStyle)
             : key.date
@@ -307,7 +357,8 @@ enum CollectionRowDatePresentation {
         calendar: Calendar = .autoupdatingCurrent,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> String {
-        texts(for: collections, locale: locale, calendar: calendar, timeZone: timeZone)[summary.id] ??
+        guard !summary.collection.isDefault else { return String() }
+        return texts(for: collections, locale: locale, calendar: calendar, timeZone: timeZone)[summary.id] ??
         summary.collection.createdAt.formatted(
             Date.FormatStyle(
                 date: .abbreviated, time: .omitted,

@@ -1,3 +1,10 @@
+//
+//  DomainValidationError.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 23/9/26.
+//
+
 import Foundation
 
 /// Typed validation failures. Presentation supplies localized user-facing copy.

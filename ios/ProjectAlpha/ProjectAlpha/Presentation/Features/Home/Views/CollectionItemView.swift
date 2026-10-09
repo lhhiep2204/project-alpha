@@ -25,11 +25,13 @@ struct CollectionItemView: View {
             }
 
             VStack(alignment: .leading, spacing: DSSpacing.xSmall) {
-                Text(collection.name)
+                Text(verbatim: displayName)
                     .font(.headline)
                     .lineLimit(1)
-                Text(verbatim: creationDateText)
-                    .font(.caption)
+                if !collection.isDefault {
+                    Text(verbatim: creationDateText)
+                        .font(.caption)
+                }
             }
 
             Spacer()
@@ -39,6 +41,12 @@ struct CollectionItemView: View {
                 .lineLimit(1)
         }
         .frame(minHeight: DSSpacing.huge + DSSpacing.xSmall)
+    }
+
+    private var displayName: String {
+        collection.isDefault
+            ? LocalizationManager.localizedString(CollectionKeys.defaultCollectionName, locale: locale)
+            : collection.name
     }
 }
 
@@ -56,4 +64,30 @@ struct CollectionItemView: View {
     )
     .padding()
     .environment(\.locale, Locale(identifier: LanguageCode.english))
+}
+
+#Preview {
+    CollectionItemView(
+        collection: Collection(
+            id: CollectionItemPreviewFixture.defaultCollectionID,
+            name: CollectionItemPreviewFixture.storedDefaultCollectionName,
+            isDefault: true,
+            createdAt: CollectionItemPreviewFixture.createdAt,
+            updatedAt: CollectionItemPreviewFixture.createdAt,
+            revision: CollectionItemPreviewFixture.revision
+        ),
+        count: CollectionItemPreviewFixture.defaultCollectionCount,
+        creationDateText: CollectionItemPreviewFixture.ignoredCreationDateText
+    )
+    .padding()
+    .environment(\.locale, Locale(identifier: LanguageCode.english))
+}
+
+private enum CollectionItemPreviewFixture {
+    static let defaultCollectionID = UUID(uuidString: "A3B1A9C4-1028-4E6A-9E1F-6D7C2B584A10")!
+    static let storedDefaultCollectionName = "Stored default name"
+    static let createdAt = Date(timeIntervalSince1970: 0)
+    static let revision: Int64 = 1
+    static let defaultCollectionCount = 4
+    static let ignoredCreationDateText = "Preview date hidden for the default collection"
 }

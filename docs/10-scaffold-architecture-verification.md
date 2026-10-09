@@ -73,3 +73,63 @@ Final test result: `/tmp/project-alpha-review/DerivedData/Logs/Test/Test-Project
 Manual device/RTL journeys, full product UI tests, Instruments leak profiling and Thread Sanitizer were not run. Weak-reference tests verify release of the current ownership graph; they are not a proof that future features cannot introduce leaks or races. No complete AC ID is marked implemented. No new backend, database, widgets or external-intent behavior was added.
 
 The 2026-09-23 adaptive-contract documentation update re-read `MainTabView`, `RouterView`, `AppRootView` and `project.pbxproj`, then ran documentation link/ID/fence/whitespace checks only. It did not rerun the app build, tests, Device Hub, simulator, accessibility or iPhone Duo validation, and it does not extend the evidence above.
+
+## Location and Apple Maps service foundation — 2026-10-07
+
+Product-owner approval: 2026-10-06, as recorded in documents 01, 06 and 08. This is an implementation/evidence record for the early service portion of P-06; it does not declare full P-06 or any complete acceptance criterion passed. Change attribution uses HEAD `fe0ec3bc737787899d4d1b7a04a6be9652ff3d4b` and the task snapshot `/tmp/projectalpha-location-map-20261006-baseline/manifest.json` with its file copies; untracked files are compared against that baseline rather than attributed through Git diff alone.
+
+Current-source inspection confirms six new Domain files for position/permission/accuracy values, freshness policy, provider requests/results, route estimates and typed service ports; four Data service files for the CoreLocation broker, Apple Maps adapter, independent search sessions and cancellable operations; AppContainer/MapContainer injection; and three deterministic Swift Testing files. AppContainer retains one device-location broker and one Maps adapter exposed through Domain ports. SDK location/search objects and provider work begin on demand, not during container initialization. A destination creates and owns its search session; each query replaces request state so an older SDK callback cannot become a newer query's result. Cancellation terminates the operation and its queued worker, with stale completions rejected.
+
+The position service implements one-shot acquisition, fix age at most 30 seconds, a 30-second acquisition timeout after authorization, accepted Reduced Accuracy with timestamp/horizontal accuracy metadata, typed denial/restriction/service errors and terminal cleanup. Maps operations provide coordinate-preserving address enrichment without a nearby business identity, suggestions/resolution, direct opaque Place ID resolution preserving known aliases, and Walking/Driving route distance and duration. No route produces a typed failure rather than fabricated ETA. These service portions trace to AC-12/19/20/21/37/43/54, D-01/03/06/11/12/15/20 and INV-02/03/09; store, presentation and device outcomes in those criteria remain separate gates.
+
+The project-setting diff adds only `NSLocationWhenInUseUsageDescription` to the app's Debug and Release generated Info configuration. Source/project settings and the gate's generated Info checks preserve Swift 6, minimum iOS 27.0 and device families `1,2`, with no Always usage description or background location mode. No production View is changed by this service foundation. The denied-permission Settings/Cancel dialog and Settings handoff remain deferred to UI integration; localization of the system permission-purpose copy remains a release gate.
+
+### Independent service verification
+
+The independent build gate used Xcode 27.0 (27A266a), Apple Swift 6.4 and an installed iPhone 17 Pro Max simulator on iOS 27.0. Xcode MCP discovery was used; its BuildProject operation did not expose the required isolated DerivedData/signing overrides, so the gate executed explicit CLI commands with `/tmp` DerivedData and `CODE_SIGNING_ALLOWED=NO`. This is simulator compilation/automated-test evidence, not manual UI/device evidence.
+
+The initial affected run passed 38 tests with zero failures or skips: 28 new Domain/location/Maps tests, eight existing architecture tests and two existing view-ownership tests. It compiled the Debug app and test targets. The final incremental universal-simulator Release build passed with no Swift compiler warnings/errors. The final affected Maps run passed all 16 tests with zero failures, skips or runtime warnings, including the strengthened queued-cancellation regression that awaits worker termination. The independent architecture/concurrency reviewer reported zero unresolved P0–P3 findings after current-source and queued-worker termination regression re-review.
+
+Gate artifacts are in `/tmp/projectalpha-location-map-finalgate-1XLO5r`: `focused-tests.xcresult`, `test-summary.json`, `maps-summary.json`, `maps-final.xcresult`, `release-final.xcresult`, their logs, `source-comparison-final.json` and `build-config-size.json`. Commands below were run by the gate from repository root; this documentation update does not rerun them.
+
+```sh
+xcodebuild -project ios/ProjectAlpha/ProjectAlpha.xcodeproj -scheme ProjectAlpha -configuration Debug -destination 'platform=iOS Simulator,id=508F78CB-9B01-42A4-9B2D-F5DE3C120FDD' -derivedDataPath /tmp/projectalpha-location-map-finalgate-1XLO5r/DerivedData -resultBundlePath /tmp/projectalpha-location-map-finalgate-1XLO5r/focused-tests.xcresult -only-testing:ProjectAlphaTests/LocationMapDomainTests -only-testing:ProjectAlphaTests/DeviceLocationServiceTests -only-testing:ProjectAlphaTests/AppleMapsServiceTests -only-testing:ProjectAlphaTests/ArchitectureTests -only-testing:ProjectAlphaTests/ViewOwnershipTests CODE_SIGNING_ALLOWED=NO test
+xcodebuild -project ios/ProjectAlpha/ProjectAlpha.xcodeproj -scheme ProjectAlpha -configuration Debug -destination 'platform=iOS Simulator,id=508F78CB-9B01-42A4-9B2D-F5DE3C120FDD' -derivedDataPath /tmp/projectalpha-location-map-finalgate-1XLO5r/DerivedData -resultBundlePath /tmp/projectalpha-location-map-finalgate-1XLO5r/maps-final.xcresult -only-testing:ProjectAlphaTests/AppleMapsServiceTests CODE_SIGNING_ALLOWED=NO test
+xcodebuild -project ios/ProjectAlpha/ProjectAlpha.xcodeproj -scheme ProjectAlpha -configuration Release -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/projectalpha-location-map-finalgate-1XLO5r/ReleaseDerivedData -resultBundlePath /tmp/projectalpha-location-map-finalgate-1XLO5r/release-final.xcresult CODE_SIGNING_ALLOWED=NO build
+```
+
+No new dependencies, bundled assets or persistent caches were added. Lazy service initialization avoids starting location/provider requests at launch, and cancelled/superseded requests stop unnecessary work; responsiveness and physical-device performance remain unmeasured. The gate observed the current universal-simulator Release app at 9,501,542 logical bytes, including a 4,116,560-byte executable. These are current build-artifact observations, not a comparable size delta, installed footprint or proof of AC-65/66.
+
+No live provider requests, permission-prompt interaction, manual UI, physical-device, adaptive/Duo, accessibility, localization, participant, installed-size or performance checks were run for this service foundation. The SDK adapters compiled; deterministic tests use injected location/provider/clock seams rather than live Apple search. The broader map UI, saved-library integration and deferred denial dialog still require their specified verification.
+
+## Current-position timeout contract and source-state note — 2026-10-08
+
+The product owner approved a 5-second acquisition timeout measured only after authorization, excluding system permission-prompt time; at that time the maximum fix age remained 30 seconds. The 2026-10-07 service-foundation implementation record above documents the then-current 30-second acquisition timeout and its associated gate results; it is a dated historical record and does not verify the revised 5-second contract. Source/test inspection for the 2026-10-08 handoff found 5-second timeout expectations and the then-current 30-second freshness limit. That documentation update did not run those tests or a build and did not establish AC-37.
+
+## Past-fix acceptance and 5-second verification record — 2026-10-09
+
+The product owner approved accepting the first geographically/metadata-valid fix with a finite nonfuture timestamp regardless of past age. At the time of this source inspection, the post-authorization timeout was 5 seconds; timestamp/accuracy metadata validation and authorization checks were present in `CurrentPositionPolicy`/`DevicePosition`, with no maximum-age cutoff. The position tests contained cases for fixes older than 30 seconds and much older past fixes, future timestamps, and timeout after 5 seconds. This is source/test inspection only. When this note was drafted, no build or tests had been run for the revised behavior; the 2026-10-07 service gate and 2026-10-08 source-state note above are historical. The focused verification below adds limited current deterministic evidence, but full AC-37 remains unpassed.
+
+### Focused independent verification — 2026-10-09
+
+Xcode MCP `BuildProject({workspaceIdentifier:"workspace-9h38OWdW1K",buildForTesting:true})` succeeded. `RunSomeTests` passed 13 tests: all 8 `DeviceLocationServiceTests` and 5 `LocationMapDomainTests`, on iPhone 18 Pro Max / iOS 27.0. Because Xcode MCP did not expose a DerivedData override, the gate also ran the required isolated CLI rerun below. With Xcode 27.0 (27A266a) and Swift 6.4, it exited 0 with `TEST SUCCEEDED`, 13 passed and 0 errors; the only three warnings were AppIntents metadata skips. Log: `/tmp/projectalpha-cached-position-20261009-focused.log`; result bundle: `/tmp/projectalpha-cached-position-20261009-focused.xcresult`.
+
+```sh
+xcodebuild test -project ios/ProjectAlpha/ProjectAlpha.xcodeproj -scheme ProjectAlpha -destination 'platform=iOS Simulator,id=5932A560-C3AF-4C8C-8AE9-344E3C51ACF8' -derivedDataPath /tmp/projectalpha-cached-position-20261009-derived CODE_SIGNING_ALLOWED=NO -only-testing:ProjectAlphaTests/DeviceLocationServiceTests -only-testing:ProjectAlphaTests/LocationMapDomainTests -resultBundlePath /tmp/projectalpha-cached-position-20261009-focused.xcresult
+```
+
+This is focused build and deterministic service/domain test evidence for the revised one-shot past-fix acceptance and 5-second timeout contract then in force. It does not pass full AC-37: no manual map UI, live GPS/provider, permission UI/device, performance, or size validation was performed.
+
+### Updated timeout contract and current source state — 2026-10-09
+
+The product owner later approved increasing the post-authorization acquisition timeout from 5 to 10 seconds, still excluding permission-prompt time; past-fix acceptance and no-fallback semantics remain unchanged. Current-source inspection shows `CurrentPositionPolicy.acquisitionTimeout` and the test deadline assertions set to 10 seconds. The focused verification below provides deterministic evidence for this revised timeout; the earlier 5-second gate above remains historical. Full AC-37 is not marked passed.
+
+### Focused verification of 10-second acquisition — 2026-10-09
+
+The isolated final gate ran on the iPhone 18 Pro Max / iOS 27.0 simulator with signing disabled and isolated DerivedData. It passed all 13 focused tests: 8 `DeviceLocationServiceTests` and 5 `LocationMapDomainTests`. The command exited 0 with `TEST SUCCEEDED`, 13 passed and 0 errors; the only three notices were skipped AppIntents metadata. Log: `/tmp/projectalpha-location-timeout-10s-focused.log`; result bundle: `/tmp/projectalpha-location-timeout-10s-focused.xcresult`.
+
+```sh
+xcodebuild test -project ios/ProjectAlpha/ProjectAlpha.xcodeproj -scheme ProjectAlpha -destination 'platform=iOS Simulator,id=5932A560-C3AF-4C8C-8AE9-344E3C51ACF8' -derivedDataPath /tmp/projectalpha-location-timeout-10s-derived CODE_SIGNING_ALLOWED=NO -only-testing:ProjectAlphaTests/DeviceLocationServiceTests -only-testing:ProjectAlphaTests/LocationMapDomainTests -resultBundlePath /tmp/projectalpha-location-timeout-10s-focused.xcresult
+```
+
+This records focused deterministic service/domain coverage for the updated timeout and past-fix acceptance. Full AC-37 remains unpassed: no manual map UI, live GPS/provider, permission UI/device matrix, performance or size validation was performed.

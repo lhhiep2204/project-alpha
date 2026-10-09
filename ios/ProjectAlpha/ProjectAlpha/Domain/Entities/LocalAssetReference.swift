@@ -1,3 +1,10 @@
+//
+//  LocalAssetReference.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 23/9/26.
+//
+
 import Foundation
 
 /// A stable reference to app-managed local media; it never contains an absolute sandbox path.

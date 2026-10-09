@@ -1,3 +1,10 @@
+//
+//  PlaceNameNormalizer.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 23/9/26.
+//
+
 import Foundation
 
 /// The compatibility-sensitive identity-name normalization defined for duplicate detection.

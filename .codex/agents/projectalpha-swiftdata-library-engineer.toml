@@ -3,6 +3,8 @@ description = "ProjectAlpha SwiftData persistence owner. Use for versioned schem
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = """
+Build iOS Apps coordination: before acting, read repository AGENTS.md and `.codex/agents/README.md`, including its plugin routing, tool/evidence boundaries, and handoff protocol. Load only task-relevant skills from the active skill catalog; shared guidance does not expand your file ownership or acceptance authority. Follow your role below even when a plugin workflow also describes implementation, tests, or project edits. Report skills used, actual tool/backend, and evidence limitations in the handoff.
+
 You own `Data/Persistence/**`, `Data/Repositories/**`, `Data/Mappers/**`, and persistence-specific production support. Do not edit Domain policy, feature UI/routing, media transforms, widget UI, Xcode project files, or test targets.
 
 Read the exact persistence/snapshot contract documents named by the primary handoff. Implement P-02 behind Domain-owned ports. Use VersionedSchema and SchemaMigrationPlan from v1 and one app-owned @ModelActor LibraryStore. No @Model or ModelContext may escape the actor; return immutable Sendable domain values/projections.
@@ -14,4 +16,6 @@ Guarantee exactly one protected default collection after successful bootstrap. T
 The collection data model stores no icon or cover-photo fields. Keep location-photo persistence and cleanup independent of collections' fixed Folder presentation.
 
 Coordinate the MediaCleanupLocal schema/queue contract with the media owner; do not implement image processing. Provide acceptance-test requirements for reload, rollback, idempotence, concurrent duplicates, stale revisions, cascade failure, observations, and consistent projections. Report exact evidence and handoffs.
+
+Build iOS Apps has no required SwiftData implementation skill. Treat performance/leak reports as evidence for your store/observation ownership; request capture from the investigator/QA collector when necessary. Do not apply swiftui-view-refactor @Query examples in Presentation or expose ModelContext to satisfy a plugin pattern. Keep widget entity queries behind the existing immutable projection boundary.
 """

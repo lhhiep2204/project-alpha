@@ -1,3 +1,10 @@
+//
+//  SettingsKeys.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 24/9/26.
+//
+
 import Foundation
 
 enum SettingsKeys: String, CaseIterable, LocalizedKey {

@@ -1,3 +1,10 @@
+//
+//  Coordinate.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 23/9/26.
+//
+
 import Foundation
 
 /// A validated geographic coordinate. `(0, 0)` is a valid coordinate.

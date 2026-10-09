@@ -31,7 +31,7 @@ For every implementation slice, read `docs/README.md`, docs 01, 03, 04, 08, and 
 - Current scaffold or project-setting claims: docs 10 plus the relevant source/project settings.
 - UI/API adoption: read current Apple guidance and verify the declaration/availability only when the task uses that API or acceptance evidence.
 
-The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need simulator/Xcode evidence must use it through the project config and `device-interaction` skill. If unavailable, report `BLOCKED`; do not claim UI/device evidence. Keep screenshots, logs, result bundles, and traces outside the repository.
+Build iOS Apps supplies `xcodebuildmcp`; use its skills and exposed MCP tools first for supported build, run, test, simulator UI, logs, and debugging. Custom agents coordinate ownership, sequencing, and evidence. The separate project-scoped Apple `xcode` server is `xcrun mcpbridge`; use it for required capabilities the plugin tools do not support, recording the gap and backend handoff. Follow `.codex/agents/README.md` and project `device-interaction` for UI/device evidence. If the required operation/evidence is unavailable, report `BLOCKED`; do not claim UI/device evidence. Keep screenshots, logs, result bundles, and traces outside the repository.
 
 ## Working-tree safety
 
@@ -43,6 +43,20 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 - Do not edit a file concurrently with another write-capable agent. Parallelize read-only exploration, test execution, or reviews; serialize overlapping edits.
 - Only `projectalpha_composition_integrator` may edit `project.pbxproj`, target membership, generated Info settings, entitlements, bundle identifiers, URL registration, or signing-related project configuration. Other agents must hand those changes off.
 - Exact shared ownership: scene navigation owns `Presentation/Features/MainTabs/**`; settings/localization owns `Shared/Preferences/**`, `Data/Preferences/**`, `Presentation/Preferences/**`, `Presentation/DesignSystem/**`, `Presentation/Localization/**`, and `Presentation/Formatting/**`; composition owns app/release assets and `Shared/Utilities/**`. Feature-specific preview fixtures belong to that feature owner.
+
+## Swift file headers
+
+- Every `.swift` file created or edited in this repository must have the standard file header at the top, before imports or declarations. Use this format and substitute the file name and its original creation date:
+  ```swift
+  //
+  //  <FileName>.swift
+  //  ProjectAlpha
+  //
+  //  Created by Hoàng Hiệp Lê on <d/M/yy>.
+  //
+  ```
+- For a new `.swift` file, use the date it is created. When editing an existing `.swift` file, preserve its existing header and creation date. If it has no header, add one using the file's original creation date, verifying that date from reliable history or metadata; if the date cannot be verified, stop and ask the owner rather than guessing.
+- This header requirement applies only to `.swift` files. Do not add comment headers to other file formats.
 
 ## Architecture boundaries
 
@@ -113,11 +127,12 @@ The project-scoped MCP server `xcode` is `xcrun mcpbridge`. Agents that need sim
 ## Project skill routing
 
 - Project skills live under `.agents/skills/`. Load the relevant `SKILL.md` and its referenced material when the task matches; all agents working in this repository can use these skills.
+- Build iOS Apps complements these skills within existing agent ownership. Before using it, read the shared skill-routing, tools/evidence, and session/handoff protocol in `.codex/agents/README.md`; load only task-relevant plugin skills. Plugin examples do not authorize architecture/product changes, cross-owner edits, new system surfaces, instrumentation dependencies, or a competing final gate.
 - For SwiftUI implementation or review, use `swiftui-specialist`.
 - For every production SwiftUI `View` a task creates or materially changes—including screens, subviews, reusable components, and generic view wrappers—add at least one `#Preview` next to the view. Give it representative deterministic inputs and preview-only fixtures; do not connect previews to live services or persistent user data. If a production view cannot be previewed without violating an architecture boundary, document the specific blocker in the handoff. Test-only view harnesses do not need previews.
 - Keep `#Preview` declarations and their deterministic fixture types available in every build configuration. SwiftUI preview macros do not affect the released app at runtime, so do not surround them or their fixtures with `#if DEBUG`. Keep preview fixtures free of live services and persistent user data.
 - For new or changed iOS 27 SwiftUI APIs, or related SDK 27 compiler errors, use `swiftui-whats-new-27`. Follow this repository's SDK declaration, availability, and focused-compile checks before adopting an API.
-- For simulator or device UI evidence, use ProjectAlpha's `.agents/skills/device-interaction` workflow and the Xcode MCP requirements above.
+- For simulator or device UI evidence, use ProjectAlpha's `.agents/skills/device-interaction` workflow and the plugin-first MCP requirements above.
 - Use `modernize-tests` when the user requests test modernization or a test task explicitly calls for migrating legacy tests. Do not migrate tests opportunistically; preserve the Swift Testing and critical XCTest UI boundaries above.
 - Use `audit-xcode-security-settings` for an explicit Xcode security/build-settings audit. Project configuration changes remain owned by `projectalpha_composition_integrator`; this skill does not expand that ownership.
 - `uikit-app-modernization` and `adopt-c-bounds-safety` are not installed because the current iOS implementation is SwiftUI/Swift and contains no UIKit app or C source to modernize. Reassess if that scope changes.

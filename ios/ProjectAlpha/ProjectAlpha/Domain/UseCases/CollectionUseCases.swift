@@ -1,3 +1,10 @@
+//
+//  CollectionUseCases.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 1/10/26.
+//
+
 import Foundation
 
 /// Validates a collection draft before the repository rechecks and commits it.

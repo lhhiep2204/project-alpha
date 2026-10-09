@@ -1,6 +1,6 @@
 # Product and decisions
 
-Status: approved design baseline. Product decisions below reflect decisions confirmed through 2026-10-01.
+Status: approved design baseline. Product decisions below reflect decisions confirmed through 2026-10-09.
 
 ## Product intent
 
@@ -22,15 +22,15 @@ Retired IDs remain in sequence for traceability and are not current requirements
 | U-04 | Home → Collection Detail/location list → Collection Map. Tapping a location opens its detail on that map, alongside other locations in the same collection. |
 | U-05 | Collection Detail has Show All on Map. It fits the camera to all locations in the collection. |
 | U-06 | Collection Map initially targets its own collection when saving. The user may choose another destination collection; this changes only the save destination. |
-| U-07 | The Map tab displays saved locations across all collections and supports searching and saving places. |
+| U-07 | The Map tab displays saved locations across all collections and supports searching and saving places. Its initial UI is a full-bleed map without a navigation title, retaining normal tab/sidebar chrome, native user-location display and a lower-trailing current-position button. First activation and explicit recenter follow the approved permission/camera/feedback contract in document 06, including the Liquid Glass capsule toast with centered text and swipe-up dismissal. Position acquisition uses the first otherwise-valid fix with a finite, nonfuture timestamp even when old. |
 | U-08 | Each saved Location record belongs to exactly one Collection. Keep a default collection that cannot be edited, renamed or deleted. Deleting another collection deletes its locations. |
 | U-09 | Prevent duplicate places within a collection. Allow independent records for the same place in different collections. |
-| U-10 | Keep favorites, notes, location photos, a fixed folder symbol for collections, arbitrary map pins, distance/ETA, external directions, location sharing, widgets and deep links. |
+| U-10 | Keep favorites, notes, location photos, a fixed folder symbol for collections, arbitrary map pins, and one-shot current position using the first geographically and metadata-valid fix with a finite nonfuture timestamp regardless of past age; the 10-second acquisition deadline starts after authorization, excludes permission-prompt time, and has no old-fix fallback. Do not add a persistent position cache or background refresh. Keep native visible-map user-location display, distance/ETA, external directions, location sharing, widgets and deep links. Position-failure feedback uses the common toast refined in document 06. |
 | U-11 | Sharing a location uses the system share sheet and an Apple Maps link. Account-based collection sharing and collaboration are future placeholders. |
 | U-12 | Compact available width uses a bottom sheet; wider layouts use an adjacent detail panel when space permits. Closing detail keeps the map open. |
 | U-13 | Collection Map hides the current top-level tab/sidebar chrome and uses Back to return to its collection's location list. |
 | U-14 | Widget location taps open the global Map tab, selecting the location and presenting its detail. |
-| U-15 | Collection Map searches saved locations in that collection plus Apple Maps. Global Map searches all saved locations plus Apple Maps. |
+| U-15 | Collection Map searches saved locations in that collection plus Apple Maps. Global Map searches all saved locations plus Apple Maps. Apple Maps services support per-session suggestions/resolution and direct Place ID resolution with known primary/alternate IDs. |
 | U-16 | Keep Favorites and configurable Collection Home Screen widgets: Small, Medium, Large, plus Extra Large on iPad. Widgets display and open content; editing from widgets, Lock Screen widgets, Siri/Shortcuts are future scope. |
 | U-17 | Native SwiftUI with Liquid Glass. Support the 20 languages listed below. Documentation is entirely English. |
 | U-18 | Document Android and backend architecture only as future placeholders. |
@@ -40,10 +40,10 @@ Retired IDs remain in sequence for traceability and are not current requirements
 | U-22 | Local-only storage without in-app backup/restore is an accepted v1 limitation. Settings must state that there is no in-app sync or backup/restore; do not imply verified device-backup behavior. |
 | U-23 | Every app and widget surface follows current Apple Human Interface Guidelines and uses native adaptive presentation across iPhone, iPad and iPhone Duo. Preserve the same functionality, hierarchy and user work at all supported window sizes and device poses. |
 | U-24 | Settings lets the user choose app appearance using System, Light or Dark. The choice applies across the app and persists. System follows the platform appearance; Light and Dark select the corresponding appearance. |
-| U-25 | The protected default collection is initially titled “My Places” in English. Localize that title for the language in effect at creation, then persist that title; later language changes do not rename it, and users cannot edit it. |
+| U-25 | The protected default collection has the title “My Places” in English and displays its localized title for the app language currently selected. Changing the app language changes the displayed title; users cannot edit it. |
 | U-26 | Every collection displays the same folder symbol. Creating or editing a collection offers no icon choice or cover photo, and collection data has no icon or cover field. This applies to all collections; no preproduction legacy-data migration is required. |
 | U-27 | Retired by U-26: the collection-cover cleanup rule does not apply because collection covers are removed before production. Location-photo media cleanup remains required under INV-06 and INV-08. |
-| U-28 | When collections share the same name, location count and creation date, each affected Home row visibly includes its localized creation time, and VoiceOver announces that time with the row's identifying context. |
+| U-28 | When non-default collections share the same name, location count and creation date, each affected Home row visibly includes its localized creation time, and VoiceOver announces that time with the row's identifying context. The protected default collection never shows or announces its creation date or time. |
 | U-29 | After a confirmed successful collection deletion, its Home row visibly animates out as the list closes the gap; a failed deletion leaves the row present. Respect Reduce Motion. |
 | U-30 | Tapping a collection opens its location list with the collection name visible as the navigation title from the first displayed frame, without waiting for the detail query. |
 | U-31 | Prioritize fast launch and interactions, smooth UI, and lightweight app size throughout v1 development and release verification. |
@@ -68,7 +68,7 @@ Retired IDs remain in sequence for traceability and are not current requirements
 | Feature | ProjectAlpha v1 requirement |
 |---|---|
 | Collection CRUD | Home is the collection list; support create, edit and delete for non-default collections |
-| Default collection | Guarantee exactly one through persistence bootstrap, initially named “My Places” in English and localized once at creation; no edit or delete action |
+| Default collection | Guarantee exactly one through persistence bootstrap; display “My Places” localized for the currently selected app language; no edit or delete action |
 | Location CRUD and moving collection | Support local create, edit, move and delete; check duplicates on create and move; saved coordinates are fixed |
 | Favorites | Store independently on each saved record and expose in lists, detail and widget |
 | Notes and custom name | Support local editing and persistence |
@@ -111,6 +111,36 @@ The v1 feature set is defined by U-10, U-16 and this table. Future placeholders 
 | D-18 | Retired by U-26: no collection-cover files remain in the target data model. Location-photo reconciliation remains governed by document 04 and INV-06/08. |
 | D-19 | Keep collection routes ID-only. On a Home selection, pass the tapped collection name as a scene-local presentation hint so the list title is available immediately; reconcile with the latest loaded record, and never treat the hint as entity identity or restored authority. |
 | D-20 | Evaluate startup, local queries, scrolling/map interaction and binary/installed size as features are added. Keep heavy persistence, image and provider work off the main actor where ownership allows; use bounded projections, thumbnails and lazy loading where appropriate. Record comparable measurements and investigate repeatable regressions before release. No app-size ceiling is specified without measured evidence and product-owner approval. |
+
+## Approved service foundation — 2026-10-06
+
+The product owner approved a service-only foundation ahead of full P-06 UI integration: one-shot device position, coordinate-to-address enrichment, per-session Apple Maps suggestions and resolution, direct Place ID resolution preserving known primary/alternate IDs, and walking/driving route distance and ETA. This refines U-10/U-15 and the existing identity contract; it does not add continuous tracking, background location or a map screen to this delivery.
+
+The position policy approved with the 2026-10-06 service foundation initially accepted fixes no older than 30 seconds and timed out acquisition after 30 seconds starting after authorization. It accepted Reduced Accuracy while returning timestamp and horizontal accuracy. A denied request returns a typed permission-denied error. Subsequent approvals refine the timeout on 2026-10-08 and remove the age cutoff on 2026-10-09; the current policy is described below and in document 06. On a later action requiring position, the planned UI shows an explanation with Settings and Cancel actions; the dialog and Settings handoff belong to the incremental Global Map UI delivery approved below. See documents 02, 06 and AC-37. These are ProjectAlpha choices, not Apple-mandated numeric thresholds or implementation evidence.
+
+## Approved Global Map UI refinement — 2026-10-07
+
+The product owner approved an incremental Global Map screen after the service foundation: full-bleed map, no navigation title, normal three-destination tab/sidebar chrome, a native blue user-location indicator and a lower-trailing current-position button inside the safe area above the tab bar. On first actual Map activation, request When In Use if authorization is undetermined; after authorization succeeds obtain a position and center the camera. Previously denied access or denial at the initial prompt remains silent. Explicit recenter animates to a position; denied authorization immediately presents Settings and Cancel without repeating the permission prompt. Other location-service, restricted-access and acquisition-timeout failures use a reusable nonblocking in-map toast. The 2026-10-09 refinement below specifies which one-shot fixes are accepted. Returning to the tab or resizing preserves camera state.
+
+This approval refines U-07/U-10 and AC-37. Native MapKit user-location rendering may update while the map is visible; the app-owned position service remains one-shot, with no background or Always authorization. A common toast belongs to Presentation's design system, using verified public SwiftUI styling/components; Apple guidance and Locify are references, not permission to adopt a private or unverified system-toast API. Saved pins, search, saving and detail remain required later portions of full P-06, rather than exclusions from v1. The approval does not establish implementation or acceptance status.
+
+## Approved common toast refinement — 2026-10-08
+
+The product owner refined U-07/U-10 and AC-37: the common toast uses public SwiftUI Liquid Glass styling with a capsule shape and fully rounded ends. Its message is always centered horizontally and vertically, including wrapped localized text. Swipe up dismisses the toast in place of a visible close button. Apple's Focus-mode system toast is the requested visual and interaction reference; this is a custom nonblocking app component, not a requirement to use private system UI or reproduce an undocumented system-toast API.
+
+Retain safe-area placement, usable map controls, scene-local bounded message state and the existing automatic-dismissal timing. D-17 accessibility remains required: honor Reduce Transparency with a readable opaque capsule, respect Reduce Motion, and provide assistive-technology and keyboard dismissal alternatives without restoring the visible close button. Full P-06 remains incomplete until its other requirements and independent gates have evidence. This approval establishes no implementation, device, performance or size pass.
+
+## Approved current-position timeout refinement — 2026-10-08
+
+The product owner approved reducing the one-shot position acquisition timeout from 30 seconds to 5 seconds. The 5-second clock starts only after authorization is granted; time waiting for the system permission prompt is excluded. At approval time, the maximum accepted fix age remained 30 seconds. The later 2026-10-09 approval below removes that age cutoff while retaining the timeout. This refinement changes the approved target contract and does not by itself establish implementation or acceptance status.
+
+## Approved past-fix acceptance refinement — 2026-10-09
+
+The product owner approved accepting the first geographically and metadata-valid device fix whose timestamp is finite and not in the future, regardless of how old it is. Existing authorization checks remain, and Reduced Accuracy remains accepted with its timestamp and horizontal accuracy metadata. Acquisition ends on the accepted fix. At that approval, if no usable fix arrived, the 5-second timeout started only after authorization and excluded permission-prompt time. The current 10-second timeout is approved below. This one-shot request adds no persistent position cache or background refresh, and timeout has no old-fix fallback. This refines U-07/U-10 and AC-37 and is detailed in documents 02, 06 and 08. No implementation or acceptance status is implied.
+
+## Approved current-position timeout refinement — 2026-10-09
+
+The product owner approved increasing the acquisition timeout from 5 seconds to 10 seconds after authorization. Permission-prompt time remains excluded. The accepted-fix rule is unchanged: accept the first otherwise-valid fix with a finite nonfuture timestamp regardless of past age, end acquisition on that fix, and return timeout without old-fix fallback if no usable fix arrives within the deadline. No persistent position cache or background refresh is added. This refines U-10 and AC-37; documents 02, 06 and 08 record the active contract and verification expectation. This approval does not establish implementation or acceptance status.
 
 ## Offline behavior
 

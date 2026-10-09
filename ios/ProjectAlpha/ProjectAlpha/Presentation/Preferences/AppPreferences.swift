@@ -1,3 +1,10 @@
+//
+//  AppPreferences.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 20/9/26.
+//
+
 import Observation
 
 /// Shared by app scenes. All writes flow through this observable owner.

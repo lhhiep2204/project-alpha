@@ -114,7 +114,7 @@ UUID uniqueness is a persistence guard, not the duplicate-place policy. SwiftDat
 
 ### Bootstrap
 
-Open/migrate the store before navigation consumes data. Inside the store actor, fetch default collections; if none exists, create one with the localized initial title for the language in effect at creation (English source: “My Places”) and commit. Persist the resulting text as the default collection's fixed name: later language changes do not rename it, and user commands cannot edit it. If exactly one default exists, keep it and its current name. User-facing create/update commands cannot set/unset `isDefault`; user-facing update/delete commands reject the default collection without changing records. Sequential bootstrap calls are idempotent. Multiple defaults from corruption or a future migration trigger a recoverable diagnostic, never a destructive reset. The single writer ensures concurrent scene startup cannot create two defaults.
+Open/migrate the store before navigation consumes data. Inside the store actor, fetch default collections; if none exists, create and commit the protected default record. Its displayed title is localized for the app language currently selected, so presentation must not treat a creation-time persisted localized string as authoritative. If exactly one default exists, keep that record. User-facing create/update commands cannot set/unset `isDefault`; user-facing update/delete commands reject the default collection without changing records. Sequential bootstrap calls are idempotent. Multiple defaults from corruption or a future migration trigger a recoverable diagnostic, never a destructive reset. The single writer ensures concurrent scene startup cannot create two defaults.
 
 ### Atomic mutation contract
 

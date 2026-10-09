@@ -1,3 +1,10 @@
+//
+//  CollectionDetailViewModel.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 26/9/26.
+//
+
 import Foundation
 
 @MainActor
@@ -16,6 +23,7 @@ final class CollectionDetailViewModel {
     private(set) var collection: CollectionSummary?
     private(set) var phase: Phase = .loading
     private var libraryRevision: Int64 = -1
+    @ObservationIgnored private var observationGeneration = 0
 
     init(collectionID: UUID, repository: any CollectionRepository, router: Router<HomeRoute>) {
         self.collectionID = collectionID
@@ -29,11 +37,18 @@ final class CollectionDetailViewModel {
     }
 
     func observe(onUnavailable: @MainActor () -> Void = {}) async {
-        phase = .loading
+        guard !Task.isCancelled else { return }
+        observationGeneration &+= 1
+        let generation = observationGeneration
+        // A lifecycle restart keeps the last committed content usable until fresh data arrives.
+        if phase != .ready {
+            phase = .loading
+        }
         do {
             let stream = await repository.observeSnapshots()
+            guard !Task.isCancelled, generation == observationGeneration else { return }
             for try await snapshot in stream {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, generation == observationGeneration else { return }
                 guard snapshot.libraryRevision >= libraryRevision else { continue }
                 libraryRevision = snapshot.libraryRevision
                 collection = snapshot.collections.first { $0.id == collectionID }
@@ -48,7 +63,7 @@ final class CollectionDetailViewModel {
                 }
             }
         } catch {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, generation == observationGeneration else { return }
             phase = .failed
         }
     }

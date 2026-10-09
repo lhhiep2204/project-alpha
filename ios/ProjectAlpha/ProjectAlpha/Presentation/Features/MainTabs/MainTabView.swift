@@ -1,3 +1,10 @@
+//
+//  MainTabView.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 13/9/26.
+//
+
 import SwiftUI
 
 /// Receives composed destinations without depending on App's DI containers.

@@ -1,3 +1,10 @@
+//
+//  SavedLocation.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 23/9/26.
+//
+
 import Foundation
 
 nonisolated enum LocationSource: String, Hashable, Sendable {

@@ -1,3 +1,10 @@
+//
+//  CollectionWorkflowTests.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 26/9/26.
+//
+
 import Foundation
 import SwiftData
 import Testing
@@ -50,15 +57,52 @@ private actor CollectionObservationGate {
     }
 }
 
+/// Opens the first subscription immediately and acknowledges a suspended re-registration.
+private actor CollectionRestartRegistration {
+    private var count = 0
+    let started = CollectionObservationGate()
+    let release = CollectionObservationGate()
+
+    func wait() async {
+        count += 1
+        guard count == 2 else { return }
+        await started.open()
+        await release.wait()
+    }
+}
+
+private actor CollectionObservationSessions {
+    let streams: [AsyncThrowingStream<CollectionListSnapshot, any Error>]
+    private var index = 0
+
+    init(streams: [AsyncThrowingStream<CollectionListSnapshot, any Error>]) { self.streams = streams }
+
+    func next() async -> AsyncThrowingStream<CollectionListSnapshot, any Error> {
+        let stream = streams[index]
+        index += 1
+        return stream
+    }
+}
+
 private struct SnapshotOnlyCollectionRepository: CollectionRepository {
     let stream: AsyncThrowingStream<CollectionListSnapshot, any Error>
+    var registrationStarted: CollectionObservationGate? = nil
+    var registrationGate: CollectionObservationGate? = nil
+    var restartRegistration: CollectionRestartRegistration? = nil
+    var sessions: CollectionObservationSessions? = nil
 
     func bootstrap(_ command: BootstrapCollectionCommand) async throws -> CollectionListSnapshot {
         throw CollectionTestFailure.injectedSave
     }
     func snapshot() async throws -> CollectionListSnapshot { throw CollectionTestFailure.injectedSave }
     func collection(id: UUID) async throws -> CollectionSummary? { throw CollectionTestFailure.injectedSave }
-    func observeSnapshots() async -> AsyncThrowingStream<CollectionListSnapshot, any Error> { stream }
+    func observeSnapshots() async -> AsyncThrowingStream<CollectionListSnapshot, any Error> {
+        if let sessions { return await sessions.next() }
+        await restartRegistration?.wait()
+        await registrationStarted?.open()
+        await registrationGate?.wait()
+        return stream
+    }
     func create(_ command: CreateCollectionCommand) async throws -> CollectionCommit {
         throw CollectionTestFailure.injectedSave
     }
@@ -910,6 +954,110 @@ struct CollectionPresentationTests {
         await observation.value
         #expect(model.phase == .ready)
         #expect(model.displayTitle(hint: CollectionTestValue.tripName) == CollectionTestValue.renamedName)
+        #expect(router.paths == [.collection(id: id)])
+    }
+
+    /// AC-05/63, D-01/03: an older observer failure cannot replace the newer scene list.
+    @Test func supersededDetailObserverFailureCannotReplaceNewReadyState() async {
+        let id = UUID()
+        let collection = Collection(id: id, name: CollectionTestValue.renamedName, isDefault: false,
+                                    createdAt: Date(timeIntervalSince1970: 1),
+                                    updatedAt: Date(timeIntervalSince1970: 2), revision: 2)
+        let enteredOldNext = CollectionObservationGate()
+        let releaseOldFailure = CollectionObservationGate()
+        let oldStream = AsyncThrowingStream<CollectionListSnapshot, any Error>(unfolding: {
+            await enteredOldNext.open()
+            await releaseOldFailure.wait()
+            throw CollectionTestFailure.injectedSave
+        })
+        let currentStream = AsyncThrowingStream<CollectionListSnapshot, any Error> { continuation in
+            continuation.yield(CollectionListSnapshot(
+                collections: [CollectionSummary(collection: collection, locationCount: 0)], libraryRevision: 2
+            ))
+            continuation.finish()
+        }
+        let sessions = CollectionObservationSessions(streams: [oldStream, currentStream])
+        let repository = SnapshotOnlyCollectionRepository(stream: oldStream, sessions: sessions)
+        let router = Router<HomeRoute>(paths: [.collection(id: id)], root: .root)
+        let model = CollectionDetailViewModel(collectionID: id, repository: repository, router: router)
+        let older = Task { await model.observe() }
+        await enteredOldNext.wait()
+        await model.observe()
+        #expect(model.phase == .ready)
+        await releaseOldFailure.open()
+        await older.value
+        #expect(model.phase == .ready)
+        #expect(model.collection?.collection == collection)
+        #expect(model.displayTitle(hint: nil) == CollectionTestValue.renamedName)
+        #expect(router.paths == [.collection(id: id)])
+    }
+
+    /// AC-05/63, D-01/19: cancellation while re-registering cannot leave ready content loading forever.
+    @Test func cancellationDuringDetailReregistrationRetainsLoadedList() async {
+        let id = UUID()
+        let collection = Collection(id: id, name: CollectionTestValue.tripName, isDefault: false,
+                                    createdAt: Date(timeIntervalSince1970: 1),
+                                    updatedAt: Date(timeIntervalSince1970: 1), revision: 1)
+        let initial = AsyncThrowingStream<CollectionListSnapshot, any Error> { continuation in
+            continuation.yield(CollectionListSnapshot(
+                collections: [CollectionSummary(collection: collection, locationCount: 0)], libraryRevision: 1
+            ))
+            continuation.finish()
+        }
+        let registration = CollectionRestartRegistration()
+        let repository = SnapshotOnlyCollectionRepository(stream: initial, restartRegistration: registration)
+        let router = Router<HomeRoute>(paths: [.collection(id: id)], root: .root)
+        let model = CollectionDetailViewModel(collectionID: id, repository: repository, router: router)
+        await model.observe()
+        #expect(model.phase == .ready)
+        let restart = Task { await model.observe() }
+        await registration.started.wait()
+        restart.cancel()
+        await registration.release.open()
+        await restart.value
+        #expect(model.phase == .ready)
+        #expect(model.collection?.collection == collection)
+        #expect(model.displayTitle(hint: nil) == CollectionTestValue.tripName)
+        #expect(router.paths == [.collection(id: id)])
+    }
+
+    /// AC-05/63, D-01/19: dismiss/re-enter cancellation cannot hide an already loaded list.
+    @Test func cancelledDetailRestartRetainsReadyCollectionAndRoute() async {
+        let id = UUID()
+        let collection = Collection(id: id, name: CollectionTestValue.tripName, isDefault: false,
+                                    createdAt: Date(timeIntervalSince1970: 1),
+                                    updatedAt: Date(timeIntervalSince1970: 1), revision: 1)
+        let initial = AsyncThrowingStream<CollectionListSnapshot, any Error> { continuation in
+            continuation.yield(CollectionListSnapshot(
+                collections: [CollectionSummary(collection: collection, locationCount: 0)], libraryRevision: 1
+            ))
+            continuation.finish()
+        }
+        let started = CollectionObservationGate()
+        let release = CollectionObservationGate()
+        let repository = SnapshotOnlyCollectionRepository(stream: initial,
+                                                          registrationStarted: started,
+                                                          registrationGate: release)
+        let router = Router<HomeRoute>(paths: [.collection(id: id)], root: .root)
+        let model = CollectionDetailViewModel(collectionID: id, repository: repository, router: router)
+        let first = Task { await model.observe() }
+        await started.wait()
+        await release.open()
+        await first.value
+        #expect(model.phase == .ready)
+
+        let enterRestart = CollectionObservationGate()
+        let restart = Task {
+            await enterRestart.wait()
+            await model.observe()
+        }
+        // Cancellation is established before re-entry, without a scheduler timing assumption.
+        restart.cancel()
+        await enterRestart.open()
+        await restart.value
+        #expect(model.phase == .ready)
+        #expect(model.collection?.collection == collection)
+        #expect(model.displayTitle(hint: nil) == CollectionTestValue.tripName)
         #expect(router.paths == [.collection(id: id)])
     }
 

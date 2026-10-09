@@ -1,3 +1,10 @@
+//
+//  PreviewCollectionRepository.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 26/9/26.
+//
+
 import Foundation
 
 /// Deterministic preview data; never opens the user's SwiftData store.

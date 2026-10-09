@@ -1,6 +1,6 @@
 # ProjectAlpha design specification
 
-Version: 1.5 • Updated: 2026-10-01 • Language: English
+Version: 1.8 • Updated: 2026-10-09 • Language: English
 
 This is the implementation specification for a new, independent app. It describes the intended product, not functionality already implemented. The iOS repository began with a three-tab scaffold; current implementation facts are recorded separately in document 10.
 
@@ -48,12 +48,32 @@ This is the implementation specification for a new, independent app. It describe
 
 The product questions raised during discovery are resolved for the documented v1 scope. This includes quick capture, duplicate-warning behavior, local-only/no-in-app-backup limits, supported capture sources, the initial default-collection title and its edit/delete protection, a fixed folder symbol without collection icon/cover data, animated collection-row deletion and an immediately visible location-list title. Saved coordinates are fixed after creation. This readiness applies to specification and implementation planning; actual usability still requires the task-based participant and device validation in document 08. Release identifiers, signing, support email and privacy/support URLs remain release configuration values; they do not block architecture or local feature implementation. See document 08 for release gates.
 
+## Approved delivery refinement
+
+On 2026-10-06 the product owner approved a service-only location/Apple Maps foundation before full P-06 UI integration. Documents 01, 02, 06 and 08 record its initial one-shot freshness/timeout policy and subsequent approved refinements, accepted Reduced Accuracy metadata, provider operations, early dependencies and deterministic test expectations. The permission-denial dialog and Settings action belong to the incremental Global Map UI approved on 2026-10-07. This approval does not establish implementation or acceptance pass status.
+
+The 2026-10-07 approval adds incremental Global Map UI before the remaining full P-06 screens: first-entry authorization/current-position camera, explicit recenter and denial recovery, native user-location display and reusable nonblocking toast. Documents 01, 02, 06 and 08 refine U-07/U-10 and AC-37 together; full P-06 saved pins/search/save/detail and device gates remain required. No implementation or acceptance status is inferred.
+
+The 2026-10-08 approval refines the common toast: public SwiftUI Liquid Glass capsule with fully rounded ends, always-centered message text and swipe-up dismissal replacing the visible close button, using Apple's Focus-mode toast as a visual/interaction reference. Documents 01, 02, 06 and 08 update U-07/U-10 and AC-37 together while preserving D-17 accessibility alternatives, Reduce Transparency/Motion, existing automatic-dismissal timing and partial P-06 scope. No implementation or acceptance status is inferred.
+
+On 2026-10-09 the product owner approved accepting the first geographically/metadata-valid one-shot position fix with a finite nonfuture timestamp regardless of past age. Permission checks and Reduced Accuracy remain; at that approval the 5-second timeout started after authorization, with no old-fix fallback, persistent cache or background refresh. Documents 01, 02, 06 and 08 refined U-07/U-10 and AC-37 together. A later 2026-10-09 approval increases the timeout to 10 seconds while preserving these other semantics; it is recorded below. No implementation or acceptance status is inferred.
+
+On 2026-10-09 the product owner approved increasing the post-authorization timeout from 5 to 10 seconds, still excluding permission-prompt time. Past otherwise-valid fixes remain accepted immediately regardless of age, and timeout still has no cached/old-fix fallback. Documents 01, 02, 06 and 08 update U-10/AC-37; the earlier 5-second verification is dated in document 10 and does not verify this newer timeout. No acceptance status is inferred.
+
 ## Documentation verification
 
 Validation on 2026-10-01: documentation links resolve, code fences are balanced, U-01 through U-31, D-01 through D-20 and AC-01 through AC-66 each occur once in order, and `git diff --check` passes. U-27/D-18 remain as retired identifiers; no acceptance criterion is marked passed by this documentation change.
 
 No app build, automated app tests or device checks were run for this documentation-only update. The current-state statement in document 10 remains based on its recorded source/project-setting inspection; this documentation change does not establish implementation or pass status for AC-01, AC-02, AC-64 or any other criterion.
 
+The 2026-10-06 service-contract refinement passed local Markdown-link, fence, whitespace and ordered U/D/INV/AC declaration checks plus `git diff --check`. No new IDs were added. This documentation check did not run app builds, tests, live provider requests, device UI, accessibility or performance measurements; current implementation evidence remains separate.
+
+The 2026-10-07 Global Map UI contract refinement passed local Markdown-link, fence, whitespace and ordered unique U/D/INV/AC declaration checks plus `git diff --check`. No IDs were added and no criteria were marked passed. Apple platform reference pages were requested, but the web reader returned JavaScript-only content; this documentation update does not assert new API availability, app/device validation, performance or size measurements.
+
+The 2026-10-08 toast refinement passed local Markdown-link, balanced-fence, trailing-whitespace and ordered unique U/D/INV/AC declaration checks plus `git diff --check`. No IDs were added and no criteria were marked passed. Official Apple materials, accessibility, layout, iOS, iPadOS and iPhone Duo pages were requested but returned JavaScript-only bodies; the custom Liquid Glass Markdown endpoint was unavailable to the web reader. SDK declarations and focused compilation remain implementation-gate requirements. This documentation-only change adds no runtime work or bundled assets; its expected runtime/footprint impact is negligible and unmeasured. No app builds, tests, device/input/accessibility checks or performance/size measurements were run for this documentation update.
+
+The 2026-10-08 product-owner approval changes U-25 so the protected default collection's displayed title follows the currently selected app language, and refines U-28 so its Home row never displays or announces a creation date/time, including when another row collides. Documents 01, 02, 04 and 08 update U-25/U-28 and AC-01/AC-52 together; non-default row date/time disambiguation remains. No IDs were added and no acceptance criteria were marked passed. This documentation-only change adds no runtime work or bundled assets; expected performance and footprint impact is negligible and unmeasured. No app builds, tests, device checks or performance/size measurements were run.
+
 ## Implementation records
 
-- [Scaffold architecture alignment and verification](10-scaffold-architecture-verification.md): ownership, preferences, Domain boundaries and focused validation of the existing code.
+- [Scaffold architecture alignment and verification](10-scaffold-architecture-verification.md): ownership, preferences, Domain boundaries and focused validation of the existing code, including the 2026-10-07 location/Apple Maps service foundation record.

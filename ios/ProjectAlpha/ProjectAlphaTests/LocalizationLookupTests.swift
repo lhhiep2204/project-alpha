@@ -1,3 +1,10 @@
+//
+//  LocalizationLookupTests.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 24/9/26.
+//
+
 import Foundation
 import Testing
 @testable import ProjectAlpha
@@ -24,6 +31,37 @@ struct LocalizationLookupTests {
         #expect(LocalizationManager.localizedString(
             HomeKeys.title, locale: Locale(identifier: Language.french.code), bundle: fixture.bundle
         ) == LocalizationBundleFixture.englishHome)
+    }
+
+    @Test func toastResourcePreservesSelectedLanguageAndFallback() throws {
+        let fixture = try LocalizationBundleFixture()
+        defer { fixture.remove() }
+        let arabic = LocalizationManager.localizedResource(
+            HomeKeys.title, locale: Locale(identifier: Language.arabic.code), bundle: fixture.bundle
+        )
+        let fallback = LocalizationManager.localizedResource(
+            HomeKeys.title, locale: Locale(identifier: Language.french.code), bundle: fixture.bundle
+        )
+        #expect(String(localized: arabic) == LocalizationBundleFixture.arabicHome)
+        #expect(String(localized: fallback) == LocalizationBundleFixture.englishHome)
+    }
+
+    @Test func visibleKeyBasedToastRetranslatesWithoutReplacingPresentation() throws {
+        let fixture = try LocalizationBundleFixture()
+        defer { fixture.remove() }
+        let manager = DSToastManager()
+        manager.show(HomeKeys.title)
+        let presentation = try #require(manager.currentPresentation)
+        let english = presentation.resolvedMessage(
+            locale: Locale(identifier: Language.english.code), bundle: fixture.bundle
+        )
+        let arabic = presentation.resolvedMessage(
+            locale: Locale(identifier: Language.arabic.code), bundle: fixture.bundle
+        )
+        #expect(String(localized: english) == LocalizationBundleFixture.englishHome)
+        #expect(String(localized: arabic) == LocalizationBundleFixture.arabicHome)
+        #expect(manager.currentPresentation?.id == presentation.id)
+        #expect(manager.currentPresentation?.duration == .seconds(3))
     }
 }
 

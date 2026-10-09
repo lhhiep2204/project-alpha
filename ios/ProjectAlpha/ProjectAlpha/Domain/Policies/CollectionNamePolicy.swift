@@ -1,3 +1,10 @@
+//
+//  CollectionNamePolicy.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 25/9/26.
+//
+
 import Foundation
 
 /// The persisted collection name is literal user content after trimming.

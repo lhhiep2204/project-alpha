@@ -1,13 +1,29 @@
 ---
 name: device-interaction
-description: Use ProjectAlpha's Xcode MCP workflow to build, launch, inspect, and verify iOS or iPadOS UI on an installed simulator or device. Use for UI acceptance evidence; this skill does not add or configure MCP servers.
+description: Coordinate Build iOS Apps MCP workflows and required Apple Xcode MCP fallbacks for ProjectAlpha simulator/device UI evidence. Use for UI acceptance checks; this skill does not add or configure MCP servers.
 ---
 
 # ProjectAlpha device interaction
 
-Use the Xcode MCP server for simulator or device evidence. Read the repository's `AGENTS.md` instructions and the feature's required product/verification documents before interacting. Keep the check scoped to the requested feature.
+Use Build iOS Apps skills and callable MCP tools first for supported simulator/device evidence; use Apple Xcode MCP only for a required unsupported capability. Read the repository's `AGENTS.md` instructions and the feature's required product/verification documents before interacting. Keep the check scoped to the requested feature.
 
-## Required workflow
+## Build iOS Apps coordination
+
+Read the shared [tools/evidence and session/handoff protocol](../../../.codex/agents/README.md) before mixing this workflow with plugin debugging, profiling or browser mirroring. This skill coordinates the project evidence boundary: plugin tools perform supported operations, custom agents own scope and verdicts, and Apple Xcode MCP supplies required unsupported capabilities. Select current tools from their exposed schemas rather than copying stale skill aliases. End or explicitly transfer the current session before another operator/backend takes control. Read-only collectors never perform project instrumentation or production fixes.
+
+## Preferred plugin workflow
+
+1. Load `build-ios-apps:ios-debugger-agent` from the active catalog. Check exposed tool metadata: installed names and capabilities may differ from the skill examples. Call `session_show_defaults` before this agent's first build/run/test; do not speculatively discover projects or change defaults in parallel. Use the assigned project path, discover a scheme and eligible installed iOS 27 runtime/UDID as needed, and record them. A booted device on the wrong runtime is not an eligible default. Do not invoke a build/run just to audit configuration.
+2. While holding the shared session assignment, set missing/wrong defaults with isolated `/tmp` DerivedData, `persist: false`, and `CODE_SIGNING_ALLOWED=NO` for simulator work. Use a task-specific profile when supported and verify the resulting values. For a requested run, use the exposed build/run or install/launch workflow; follow its current boot behavior rather than adding speculative boot/open steps. For a build-only assignment, do not launch the app. Do not reset simulator data/settings.
+3. Confirm the exact current app/build launched, then capture and inspect the runtime UI snapshot, screenshot and available logs. Prefer current semantic element references. Use only documented tool schemas; refresh and inspect state after navigation, scrolling, sheet changes, layout changes, or an action whose result the case asserts. Do not reuse stale element references or hide intermediate assertions in a batch.
+4. Check only assigned outcomes, including relaunch/persistence when required. Keep evidence outside the repository and tie every result to source/baseline, build configuration, device/runtime and actual actions. A successful launch/screenshot is not an accessibility, resize or physical-device performance pass.
+5. Detach the debugger and stop captures/helpers you started before releasing control. Report any retained defaults/resources for the next operator to recheck. If a required capability is absent, record it and transfer control before the Apple fallback below. If a tool errors, classify the failure; do not silently switch backend or grant missing permissions. When no available backend can perform a required case, mark it blocked.
+
+## Apple Xcode MCP fallback
+
+Use this path only for an assigned required capability the plugin's exposed tools cannot provide. Record that gap and keep one operator. Existing first-party device-session requirements remain applicable on this path.
+
+## Apple fallback workflow
 
 1. Discover the open Xcode workspace, scheme, and eligible run destinations with Xcode MCP. Open the repository's Xcode project only if it is not already open. Choose an installed simulator that matches the repository's required iOS version; do not invent or reuse a device UUID without discovering it in the current run.
 2. Build the current project with Xcode MCP. If interaction is needed, start a workspace device session, install and launch the current build, then capture the initial accessibility hierarchy, screenshot, and logs.

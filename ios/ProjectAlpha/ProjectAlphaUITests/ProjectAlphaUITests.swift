@@ -1,6 +1,6 @@
 //
 //  ProjectAlphaUITests.swift
-//  ProjectAlphaUITests
+//  ProjectAlpha
 //
 //  Created by Hoàng Hiệp Lê on 12/9/26.
 //

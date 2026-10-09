@@ -1,8 +1,16 @@
+//
+//  AppRootView.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 13/9/26.
+//
+
 import SwiftUI
 
 struct AppRootView: View {
     let container: AppContainer
     @State private var coordinator = SceneCoordinator()
+    @State private var toastManager = DSToastManager()
     @State private var repository: (any CollectionRepository)?
     @State private var libraryFailed = false
 
@@ -53,7 +61,9 @@ struct AppRootView: View {
                 ProgressView()
             }
         }
+        .dsToast(manager: toastManager)
         .environment(coordinator)
+        .environment(toastManager)
         .environment(container.preferences)
         .environment(\.locale, LocalizationManager.locale(for: language))
         .environment(\.layoutDirection, LocalizationManager.layoutDirection(for: language))

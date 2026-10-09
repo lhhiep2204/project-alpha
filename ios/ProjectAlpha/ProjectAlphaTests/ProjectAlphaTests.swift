@@ -1,3 +1,10 @@
+//
+//  ProjectAlphaTests.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 12/9/26.
+//
+
 import Foundation
 import Observation
 import SwiftUI
@@ -71,7 +78,10 @@ struct ArchitectureTests {
                 repository: repository,
                 useCases: CollectionUseCases(repository: repository)
             )
-            let mapModel = MapViewModel(router: owner.mapRouter)
+            let mapModel = MapViewModel(
+                router: owner.mapRouter,
+                deviceLocationService: MapPresentationLocationService()
+            )
             let settingsModel = SettingsViewModel(router: owner.settingsRouter)
             scene = owner
             home = homeModel

@@ -30,6 +30,7 @@ final class HomeViewModel {
     var searchText = String() {
         didSet { updateVisibleCollections() }
     }
+    private var localizedDefaultCollectionName = String()
 
     init(
         router: Router<HomeRoute>,
@@ -88,6 +89,12 @@ final class HomeViewModel {
     func clearDeletionError() { deletionError = false }
     func clearChangedCollection() { changedCollection = nil }
 
+    func setLocalizedDefaultCollectionName(_ name: String) {
+        guard localizedDefaultCollectionName != name else { return }
+        localizedDefaultCollectionName = name
+        updateVisibleCollections()
+    }
+
     private func apply(_ snapshot: CollectionListSnapshot) {
         guard snapshot.libraryRevision >= libraryRevision else { return }
         libraryRevision = snapshot.libraryRevision
@@ -101,6 +108,11 @@ final class HomeViewModel {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         visibleCollections = query.isEmpty
             ? collections
-            : collections.filter { $0.collection.name.localizedCaseInsensitiveContains(query) }
+            : collections.filter { summary in
+                let displayName = summary.collection.isDefault
+                    ? localizedDefaultCollectionName
+                    : summary.collection.name
+                return displayName.localizedCaseInsensitiveContains(query)
+            }
     }
 }

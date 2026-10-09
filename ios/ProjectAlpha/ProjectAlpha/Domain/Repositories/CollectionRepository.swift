@@ -1,3 +1,10 @@
+//
+//  CollectionRepository.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 25/9/26.
+//
+
 import Foundation
 
 /// The single committed-library boundary used by collection workflows.

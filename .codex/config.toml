@@ -4,8 +4,10 @@ max_concurrent_threads_per_session = 4
 default_subagent_reasoning_effort = "medium"
 interrupt_message = true
 
-# XcodeBuildMCP via Apple's xcrun MCP bridge. Custom agents inherit this
-# project-level server unless a task explicitly requires a separate server.
+# Apple Xcode MCP via xcrun mcpbridge; this is not XcodeBuildMCP.
+# Build iOS Apps supplies its separate xcodebuildmcp server.
+# Agents inherit configured tools; coordination lives in .codex/agents/README.md.
+# Do not register a duplicate plugin server in project or per-agent config.
 [mcp_servers.xcode]
 command = "xcrun"
 args = ["mcpbridge"]

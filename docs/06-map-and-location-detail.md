@@ -6,7 +6,7 @@
 |---|---|---|
 | Owner | A Home route/session | Map tab session |
 | Saved-location scope | Fixed collectionID | All collections |
-| Initial camera | Fit entire collection or focus tapped location | Restore camera; otherwise fit saved locations; otherwise safe fallback |
+| Initial camera | Fit entire collection or focus tapped location | Retain valid camera; first ordinary activation acquires/focuses current position after authorization succeeds; otherwise saved-scope fit or safe fallback. Explicit widget focus retains its existing priority. |
 | Initial detail | Open only for location entry | None on fresh launch; selected record for widget intent |
 | Saved search | Current scope collection | Entire library |
 | Provider search | Apple Maps, biased by visible map region | Same |
@@ -46,7 +46,7 @@ LocationDraft.destinationCollectionID = independent form value
 
 Include points around the antimeridian correctly; avoid a naive min/max longitude span that zooms out across the world. Clamp usable zoom for coincident points. A fit includes all scoped records, not just the viewport or currently filtered list.
 
-Fallback order is retained camera, saved-scope fit, usable last position when already authorized, then a neutral broad region. Do not infer a location from IP or require permission just to open a map. Camera is UI state, not a persisted business entity. [Apple MapCameraPosition](https://developer.apple.com/documentation/mapkit/mapcameraposition)
+Fallback order is retained camera, saved-scope fit, usable last position when already authorized, then a neutral broad region. Do not infer a location from IP or make permission a prerequisite for using the map. The approved first Global Map activation requests permission when undetermined; denial still leaves the map usable. Camera is UI state, not a persisted business entity. [Apple MapCameraPosition](https://developer.apple.com/documentation/mapkit/mapcameraposition)
 
 ## Saved pins and overlapping places
 
@@ -67,6 +67,38 @@ Provider search is biased to the visible region captured when its request starts
 Each active search UI owns a provider-search session, including editor subflows. Do not share one mutable MKLocalSearchCompleter continuation globally. Saved filtering and provider loading/errors are independent. Cached saved results must be invalidated by the library revision.
 
 A suggestion can contain display text without a coordinate. It cannot be saved as `(0,0)`. Only resolved candidates or explicit manual coordinates enter the editor's savable state. Provider resolution failure keeps the result UI open with retry; it must not silently dismiss.
+
+## Approved service foundation boundary
+
+The 2026-10-06 approval delivers services and composition before full map UI. Domain owns Foundation-only values, typed results/errors and service ports; Data owns CoreLocation/MapKit adapters; App owns shared service lifetime and creates separate provider-search sessions. No screen, camera, dialog or Settings handoff is added by this foundation.
+
+| Service operation | Required result / boundary |
+|---|---|
+| Reverse geocode coordinate | Return address metadata for the exact input point. Do not change its coordinate or assign a nearby business's Place ID; absent address/provider failure does not invalidate that coordinate. |
+| Suggest and resolve | Suggestions belong to an independent search session, resolve to coordinate-bearing candidates and obey cancellation/generation rules above. |
+| Resolve Place ID | Resolve an opaque Apple Place ID directly and retain authoritative primary and known alternate IDs; do not approximate by nearby name search. |
+| Estimate route | Return route distance and duration for explicit Walking or Driving mode, with request identity and typed unavailable/failure outcomes. Do not substitute straight-line distance or fabricate duration. |
+
+This table records approved ProjectAlpha behavior, not a declaration that SDK adoption has been verified. Adapter implementers must verify the selected API declarations/availability and compile focused uses under document 09 before adoption. Locify is a reference implementation, not the authority for ProjectAlpha behavior or identity rules.
+
+## Approved incremental Global Map UI
+
+The 2026-10-07 delivery follows the service foundation and precedes the remaining full P-06 UI. Render the map full bleed without a navigation title, retaining Home/Map/Settings through normal native tab/sidebar chrome. Keep the current-position button at the lower trailing edge inside applicable safe areas, above the tab bar where it is horizontal and clear of system chrome when it adapts. Its accessible target is at least 44 by 44 points. MapKit supplies the native blue user-location indicator while authorized and visible; its display updates are independent of the app-owned one-shot acquisition service.
+
+| Trigger / authorization | Position and feedback |
+|---|---|
+| First actual Map activation, undetermined | Request When In Use once; after grant acquire the first otherwise-valid fix with a finite nonfuture timestamp, regardless of age, and center camera. Denial is silent. |
+| First actual Map activation, authorized | Acquire the first otherwise-valid fix with a finite nonfuture timestamp, regardless of age, and center camera. |
+| First actual Map activation, denied | Show the usable map without a denial alert or another prompt. |
+| Subsequent tab return or resize | Preserve the camera; do not repeat first-entry acquisition. |
+| Explicit current-position button, authorized | Obtain the first otherwise-valid fix with a finite nonfuture timestamp, regardless of age, and animate camera to it; respect Reduce Motion. |
+| Explicit current-position button, denied | Immediately show native explanatory Settings/Cancel alert; do not repeat the permission prompt. |
+| Restricted access, disabled/unavailable service, provider failure or no usable fix before timeout | Show a localized nonblocking in-map toast; preserve usable map/camera. |
+| Cancelled request / inactive map | Stop pending acquisition and ignore stale completion; do not show cancellation as a failure. |
+
+Use a reusable Presentation design-system toast with public SwiftUI Liquid Glass styling, a capsule shape with fully rounded ends, and message text always centered horizontally and vertically, including wrapped localized messages. Swipe up dismisses it instead of a visible close button. Apple’s Focus-mode system toast is the product owner’s visual/interaction reference; this does not require private system UI or exact reproduction of undocumented system behavior. Apple [alerts](https://developer.apple.com/design/human-interface-guidelines/alerts), [materials](https://developer.apple.com/design/human-interface-guidelines/materials) and [layout](https://developer.apple.com/design/human-interface-guidelines/layout) are platform references; the nonblocking toast/error policy is a ProjectAlpha choice. Locify remains a reference implementation. Apple’s [custom Liquid Glass guidance](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views) and [accessibility guidance](https://developer.apple.com/design/human-interface-guidelines/accessibility) are additional platform references. No public system-toast symbol or iPhone Duo support is asserted by this contract; the implementer must verify SDK declarations and focused compilation, and retain document 09's toolchain limitations. Keep toast feedback inside safe areas, accessible with Dynamic Type/RTL and assistive technologies, and avoid blocking map interaction. Keep existing automatic-dismissal timing. Provide assistive-technology and keyboard dismissal alternatives without a visible close button; honor Reduce Transparency with a readable opaque capsule and Reduce Motion with appropriate motion reduction. Bound message state and cancel obsolete dismissal work; do not create an app-global map/toast state owner.
+
+Saved annotations, global search, save/manual capture and adaptive detail remain required by full P-06. Their absence in this incremental delivery does not satisfy those acceptance criteria or remove them from scope.
 
 ## Detail layout
 
@@ -92,9 +124,11 @@ Use system navigation, toolbar, sheet, menu and alert components so bars and pre
 
 ## Position, distance and directions
 
-Request When In Use authorization at the first user action that needs device position. A CoreLocation adapter exposes plain permission states and an asynchronous position sequence/result to Domain. Stop unneeded updates when the screen/action no longer needs them; no background or Always authorization is needed.
+Request When In Use authorization at the first user action that needs device position, including the approved first actual Global Map activation above. Each request acquires one position through a CoreLocation adapter that exposes plain permission states and a typed asynchronous result to Domain. Accept the first geographically valid fix with valid metadata, including a finite timestamp that is not in the future, regardless of past age. Preserve the fix timestamp and finite, nonnegative horizontal accuracy; accept Reduced Accuracy and return authorization/accuracy state. Acquisition times out after 10 seconds if no usable fix arrives, starting only after authorization is granted; time waiting for the system permission prompt is excluded. End the one-shot request on the first accepted fix, failure, timeout or cancellation. Do not add a persistent position cache, background refresh or fallback to an old fix after timeout. Native visible-map user-location rendering may update independently.
 
-Handle reduced accuracy, denied/restricted access, stale/no position and cancellation. Show position age/accuracy when it affects usefulness; do not present an old fix as live. For the first ETA in a map session, automatic mode uses walking at straight-line distance ≤1 km and driving otherwise. Display that mode next to the result and let the user select Walking or Driving for the active map session; the choice is not a hidden global preference. Offer route failure/unavailable state; never fabricate an ETA from straight-line distance. Label straight-line distance separately from route distance.
+Denied access returns a typed permission-denied error without requesting permission again. The incremental Global Map UI keeps initial/passive denial silent and shows an explanatory Settings/Cancel dialog immediately on an explicit current-position action, as specified in document 02. Services do not present dialogs or open Settings.
+
+Handle reduced accuracy, denied/restricted access, invalid/future samples, no usable fix and cancellation. Invalid/future samples do not complete acquisition; wait for a valid fix only within the same bounded request. Show position age/accuracy when it affects usefulness and preserve the original timestamp; age alone does not invalidate a fix. For the first ETA in a map session, automatic mode uses walking at straight-line distance ≤1 km and driving otherwise. Display that mode next to the result and let the user select Walking or Driving for the active map session; the choice is not a hidden global preference. Offer route failure/unavailable state; never fabricate an ETA from straight-line distance. Label straight-line distance separately from route distance.
 
 Key route requests by origin, destination coordinate or saved-record identity, mode and generation. Cancel/reject old requests on any key change, including manual pins without Place IDs. A nullable provider Place ID alone is not a sufficient change key. Changing distance units reformats the same metric value; it does not require a new directions request.
 

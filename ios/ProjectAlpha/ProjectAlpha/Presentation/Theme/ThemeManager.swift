@@ -1,3 +1,10 @@
+//
+//  ThemeManager.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 23/9/26.
+//
+
 import SwiftUI
 
 /// Converts the app-owned appearance preference into SwiftUI's native color-scheme policy.

@@ -1,3 +1,10 @@
+//
+//  LocalizedKey.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 20/9/26.
+//
+
 import SwiftUI
 
 protocol LocalizedKey: RawRepresentable where RawValue == String {}

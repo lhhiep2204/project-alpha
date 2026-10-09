@@ -1,3 +1,10 @@
+//
+//  SwiftDataCollectionRepository.swift
+//  ProjectAlpha
+//
+//  Created by Hoàng Hiệp Lê on 26/9/26.
+//
+
 import Foundation
 
 /// App-owned adapter; all reads and writes are serialized by LibraryStore.
