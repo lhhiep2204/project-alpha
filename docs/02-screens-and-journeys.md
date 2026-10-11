@@ -9,7 +9,7 @@ Authority: [product decisions](01-product-and-decisions.md). Technical routing i
 | S-01 | Home | Home tab root | Collections with a fixed folder symbol and count, search by collection name, create and non-default edit/delete, Find Saved Places entry |
 | S-02 | Collection Detail | Push from Home; Back to Home | Collection name as immediate navigation title, location list, local search, favorites filter, add, Show All on Map, location actions |
 | S-03 | Collection Map | Push from S-02; Back to S-02 | Scope title, scoped saved pins, search, save, current position, fit all, detail |
-| S-04 | Global Map | Map tab root | Full-bleed map with no navigation title and normal tab/sidebar chrome; native user-location indicator and lower-trailing current-position button. Full P-06 adds all saved pins, search, save, fit all and detail. |
+| S-04 | Global Map | Map tab root | Full-bleed map with no navigation title and normal tab/sidebar chrome; native user-location indicator and lower-trailing current-position button. The approved search increment adds a trailing navigation-bar Search button and Apple Maps-only search. Full P-06 adds saved pins/search, save, fit all and detail. |
 | S-05 | Location Detail | Selection on either map | Name, address, coordinate, collection for saved items, notes/photos, bounded related locations, quick save/share/directions actions |
 | S-06 | Place Search | From either map or new-location editor | Saved results in applicable scope; separate Apple Maps results; loading/error/empty states |
 | S-07 | Collection Editor | Create/edit sheet or editor subflow | Name; Save/Cancel |
@@ -60,6 +60,14 @@ Tapping a row pushes Collection Map with a focus intent for that location. All s
 Show All on Map pushes the same map with a fit-all intent and no selected location. Label it `Show All {count} on Map` so a filtered list does not imply that only visible rows are included. It always includes the entire collection, not just filtered rows. Keep the action available for an empty collection as `Show All 0 on Map`: open an empty map with an Add Place prompt. Repeated taps must not push duplicate map screens.
 
 ## J-04 — Search and add a place
+
+**Approved Apple Maps-only Global Map increment (2026-10-09):** The trailing navigation-bar Search button opens a search screen. Keyword edits wait for 1 second without another edit before starting provider search; show results with place name and address/location text. Selecting a result resolves it, then closes Search, focuses Global Map at its coordinate and displays an unsaved candidate pin with name/address. A failed resolution leaves Search open for retry. No detail/editor/save flow or saved-place results are delivered in this increment. The full journey below remains required for P-06.
+
+**Keyboard refinement (2026-10-10):** Search keeps its title and app Close action visible when the query field is focused. Do not show an external X or native search Cancel. Enter dismisses only the keyboard, preserving the query and results. While Search remains open, only the clear X inside the query field explicitly clears it; ordinary editing remains available. Closing Search uses its existing presentation owner.
+
+**Dismissal lifecycle refinement (2026-10-10):** App Close, system dismissal and successful selection discard the search presentation, model and provider session, clear all query/results/errors/resolution state and cancel pending work. Reopening Search starts empty with a fresh session. A successfully resolved candidate is transferred to the existing map first, so its focused name/address pin remains. Enter and a scene/tab pause while the presentation is still owned retain the open search; resize/display/pose changes do not discard it.
+
+**Appearance refinement (2026-10-10):** The query field uses a Liquid Glass capsule with fully rounded ends. Remove any custom or fixed shared top background behind the title, Close action and query field; retain default system navigation-bar/scroll-edge blur like Home when results scroll underneath; retain the field’s own capsule surface and safe-area layout. Keep the same title/Close visibility and keyboard behavior. Reduce Transparency uses a readable opaque capsule, with Dynamic Type, RTL and labeled input actions preserved.
 
 1. Open Search from a map, Find Saved Places from Home, or Add Location from a list/editor.
 2. Show saved results in the calling scope and Apple Maps results as separate sections. Home's entry uses the global saved scope. Offline, saved search still works and provider failure is shown only in its section.

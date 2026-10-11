@@ -16,6 +16,7 @@ struct MapView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openURL) private var openURL
+    @Environment(\.locale) private var locale
     @State private var viewModel: MapViewModel
     private let rendersLiveMap: Bool
 
@@ -28,8 +29,28 @@ struct MapView: View {
         rendersLiveMap && coordinator.selectedTab == .map && scenePhase == .active
     }
 
+    private var isSearchActive: Bool {
+        isMapActive && coordinator.mapPresentation == .search
+    }
+
+    private var searchTaskID: MapSearchTaskID {
+        MapSearchTaskID(active: isSearchActive, presentationGeneration: viewModel.placeSearchGeneration)
+    }
+
+    private var searchPresented: Binding<Bool> {
+        Binding(
+            get: { coordinator.mapPresentation == .search && coordinator.selectedTab == .map },
+            set: { presented in
+                if !presented, coordinator.selectedTab == .map {
+                    closeSearch()
+                }
+            }
+        )
+    }
+
     var body: some View {
         @Bindable var model = viewModel
+        let searchTaskID = self.searchTaskID
 
         mapCanvas
             .overlay(alignment: .bottomTrailing) {
@@ -38,8 +59,50 @@ struct MapView: View {
                 }
                 .padding(MapLayoutMetrics.controlPadding)
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: openSearch) {
+                        Label { Text(CommonKeys.search) } icon: { Image.appSystemIcon(.search) }
+                    }
+                    .accessibilityIdentifier(MapAccessibility.searchButton)
+                    .keyboardShortcut(KeyEquivalent(MapKeyboardShortcuts.search), modifiers: .command)
+                }
+            }
+            .sheet(isPresented: searchPresented, onDismiss: searchDidDismiss) {
+                if let search = viewModel.placeSearch {
+                    MapPlaceSearchView(model: search, onClose: closeSearch)
+                }
+            }
+            .task(id: searchTaskID) {
+                guard !searchTaskID.active
+                        || (coordinator.mapPresentation == .search && coordinator.selectedTab == .map) else { return }
+                await viewModel.updatePlaceSearchActivity(
+                    isActive: searchTaskID.active,
+                    expectedGeneration: searchTaskID.presentationGeneration,
+                    localeIdentifier: locale.identifier
+                )
+            }
+            .onChange(of: isSearchActive) { _, active in
+                if !active { viewModel.placeSearch?.stop() }
+            }
+            .onChange(of: coordinator.mapPresentation, initial: true) { _, presentation in
+                switch presentation {
+                case .search: _ = viewModel.openPlaceSearch()
+                case .none: viewModel.dismissPlaceSearch()
+                }
+            }
+            .onChange(of: locale.identifier) { _, identifier in
+                viewModel.placeSearch?.updateLocale(identifier)
+            }
+            .onChange(of: viewModel.placeSearch?.resolvedCandidate) { _, candidate in
+                guard isSearchActive, let candidate else { return }
+                withAnimation(reduceMotion ? nil : .smooth) {
+                    viewModel.selectSearchCandidate(candidate)
+                }
+                closeSearch()
+            }
             .task(id: MapLocationTaskID(active: isMapActive, recenterID: viewModel.recenterRequestID)) {
+                guard !Task.isCancelled else { return }
                 guard isMapActive else {
                     viewModel.deactivate()
                     return
@@ -74,20 +137,50 @@ struct MapView: View {
             }
     }
 
+    private func openSearch() {
+        viewModel.openPlaceSearch()
+        coordinator.openMapSearch()
+    }
+
+    private func closeSearch() {
+        viewModel.dismissPlaceSearch()
+        coordinator.closeMapSearch()
+    }
+
+    private func searchDidDismiss() {
+        // A tab/background pause can remove rendering while the scene still owns Search.
+        if coordinator.mapPresentation == .none { viewModel.dismissPlaceSearch() }
+    }
+
     @ViewBuilder
     private var mapCanvas: some View {
         @Bindable var model = viewModel
         if rendersLiveMap {
-            Map(position: $model.cameraPosition) {
-                if isMapActive && viewModel.showsUserLocation {
-                    UserAnnotation()
+            GeometryReader { geometry in
+                Map(position: $model.cameraPosition) {
+                    if isMapActive && viewModel.showsUserLocation {
+                        UserAnnotation()
+                    }
+                    if let candidate = viewModel.selectedCandidate {
+                        Annotation(candidate.name, coordinate: CLLocationCoordinate2D(
+                            latitude: candidate.coordinate.latitude,
+                            longitude: candidate.coordinate.longitude
+                        )) {
+                            MapSearchCandidatePin(
+                                candidate: candidate,
+                                maximumWidth: geometry.size.width * MapLayoutMetrics.candidateWidthFraction
+                            )
+                        }
+                        .tag(candidate.id)
+                    }
                 }
-            }
-            .mapStyle(preferences.mapType.mapStyle)
-            .mapControls { MapCompass() }
-            .onMapCameraChange(frequency: .onEnd) { _ in
-                if viewModel.cameraPosition.positionedByUser {
-                    viewModel.userDidChangeCamera()
+                .mapStyle(preferences.mapType.mapStyle)
+                .mapControls { MapCompass() }
+                .onMapCameraChange(frequency: .onEnd) { context in
+                    viewModel.recordVisibleRegion(context.region)
+                    if viewModel.cameraPosition.positionedByUser {
+                        viewModel.userDidChangeCamera()
+                    }
                 }
             }
         } else {
@@ -124,27 +217,34 @@ struct MapView: View {
 
 private struct MapCurrentLocationButton: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let isLocating: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            if isLocating {
-                ProgressView()
-                    .frame(width: MapLayoutMetrics.controlSize, height: MapLayoutMetrics.controlSize)
-            } else {
-                Label {
-                    Text(MapKeys.currentLocation)
-                } icon: {
-                    Image(systemName: MapSymbols.currentLocation)
-                        .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
-                }
-                .labelStyle(.iconOnly)
-                .frame(width: MapLayoutMetrics.controlSize, height: MapLayoutMetrics.controlSize)
+            Label {
+                Text(MapKeys.currentLocation)
+            } icon: {
+                Image(systemName: MapSymbols.currentLocation)
+                    .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
             }
+            .labelStyle(.iconOnly)
+            .opacity(isLocating ? 0 : 1)
+            .overlay {
+                if isLocating {
+                    ProgressView()
+                }
+            }
+            .frame(width: MapLayoutMetrics.controlSize, height: MapLayoutMetrics.controlSize)
+            .contentShape(.circle)
         }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.circle)
+        .buttonStyle(.plain)
+        .background(
+            reduceTransparency ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
+            in: Circle()
+        )
+        .glassEffect(reduceTransparency ? .identity : .regular.interactive(), in: Circle())
         .disabled(isLocating)
         .accessibilityLabel(Text(isLocating ? MapKeys.locating : MapKeys.currentLocation))
         .accessibilityIdentifier(MapAccessibility.currentLocationButton)
@@ -156,6 +256,11 @@ private struct MapCurrentLocationButton: View {
 private struct MapLocationTaskID: Equatable {
     let active: Bool
     let recenterID: Int
+}
+
+private struct MapSearchTaskID: Equatable {
+    let active: Bool
+    let presentationGeneration: UInt64
 }
 
 private extension MapLocationIssue {
@@ -175,15 +280,18 @@ private enum MapSymbols {
 
 private enum MapAccessibility {
     static let currentLocationButton = "map.currentLocation"
+    static let searchButton = "map.search"
 }
 
 private enum MapKeyboardShortcuts {
     static let currentLocation: Character = "l"
+    static let search: Character = "f"
 }
 
 private enum MapLayoutMetrics {
     static let controlSize: CGFloat = 44
     static let controlPadding: CGFloat = 12
+    static let candidateWidthFraction = 0.7
 }
 
 #Preview {
@@ -205,4 +313,9 @@ private enum MapLayoutMetrics {
     MapCurrentLocationButton(isLocating: false) {}
         .padding()
         .preferredColorScheme(.dark)
+}
+
+#Preview {
+    MapCurrentLocationButton(isLocating: true) {}
+        .padding()
 }

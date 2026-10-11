@@ -38,6 +38,9 @@ enum CommonKeys: String, CaseIterable, LocalizedKey {
     // MARK: - O
     case openInMaps = "Open in Maps"
 
+    // MARK: - R
+    case retry = "Retry"
+
     // MARK: - S
     case save = "Save"
     case search = "Search"

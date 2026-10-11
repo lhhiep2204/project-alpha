@@ -32,11 +32,18 @@ struct MapLocationFocus: Equatable {
 final class MapViewModel {
     private let router: Router<MapRoute>
     private let deviceLocationService: any DeviceLocationService
+    private let placeSearchService: (any PlaceSearchService)?
+    private let searchDebounceClock: any PlaceSearchDebounceClock
     private var operationGeneration = 0
     private var initialPositionCompleted = false
     private var userChangedCamera = false
     private var consumedRecenterRequestID = 0
     private var isActive = false
+
+    private(set) var placeSearch: MapPlaceSearchModel?
+    private(set) var placeSearchGeneration: UInt64 = 0
+    private(set) var selectedCandidate: PlaceCandidate?
+    private(set) var visibleSearchRegion: PlaceSearchRegion?
 
     var cameraPosition: MapCameraPosition = .rect(.world)
     private(set) var locationFocus: MapLocationFocus?
@@ -49,9 +56,48 @@ final class MapViewModel {
         recenterRequestID != consumedRecenterRequestID
     }
 
-    init(router: Router<MapRoute>, deviceLocationService: any DeviceLocationService) {
+    init(
+        router: Router<MapRoute>,
+        deviceLocationService: any DeviceLocationService,
+        placeSearchService: (any PlaceSearchService)? = nil,
+        searchDebounceClock: any PlaceSearchDebounceClock = ContinuousPlaceSearchDebounceClock()
+    ) {
         self.router = router
         self.deviceLocationService = deviceLocationService
+        self.placeSearchService = placeSearchService
+        self.searchDebounceClock = searchDebounceClock
+    }
+
+    /// Cheap creation belongs to the opening action, never rendering or initialization.
+    @discardableResult
+    func openPlaceSearch() -> MapPlaceSearchModel {
+        if let placeSearch { return placeSearch }
+        placeSearchGeneration += 1
+        let search = MapPlaceSearchModel(service: placeSearchService, clock: searchDebounceClock)
+        placeSearch = search
+        return search
+    }
+
+    /// Actual dismissal ends this presentation's lifetime; pause uses stop instead.
+    func dismissPlaceSearch() {
+        placeSearch?.dismiss()
+        placeSearch = nil
+    }
+
+    /// The lifecycle task carries the presentation generation captured by its view.
+    /// Cancelled or obsolete tasks never start or pause a replacement presentation.
+    func updatePlaceSearchActivity(
+        isActive: Bool,
+        expectedGeneration: UInt64,
+        localeIdentifier: String?
+    ) async {
+        guard !Task.isCancelled, placeSearchGeneration == expectedGeneration else { return }
+        guard isActive else {
+            placeSearch?.stop()
+            return
+        }
+        guard let search = placeSearch else { return }
+        await search.start(localeIdentifier: localeIdentifier, region: visibleSearchRegion)
     }
 
     /// Called only by the selected Map destination's foreground lifecycle task.
@@ -80,6 +126,7 @@ final class MapViewModel {
     /// The view cancels its structured task at the same boundary. Generation invalidation
     /// also rejects a service that returns after cancellation or a later activation.
     func deactivate() {
+        placeSearch?.stop()
         isActive = false
         operationGeneration += 1
         consumedRecenterRequestID = recenterRequestID
@@ -89,6 +136,28 @@ final class MapViewModel {
 
     func userDidChangeCamera() {
         userChangedCamera = true
+    }
+
+    func recordVisibleRegion(_ region: MKCoordinateRegion) {
+        guard let coordinate = try? Coordinate(latitude: region.center.latitude, longitude: region.center.longitude) else { return }
+        visibleSearchRegion = try? PlaceSearchRegion(
+            center: coordinate,
+            latitudeDelta: region.span.latitudeDelta,
+            longitudeDelta: region.span.longitudeDelta
+        )
+        placeSearch?.updateRegion(visibleSearchRegion)
+    }
+
+    func selectSearchCandidate(_ candidate: PlaceCandidate) {
+        selectedCandidate = candidate
+        // Selecting a search result supersedes both passive acquisition and explicit
+        // recentering. A late completion must not publish an obsolete camera focus.
+        operationGeneration += 1
+        locationFocus = nil
+        isLocating = false
+        consumedRecenterRequestID = recenterRequestID
+        userChangedCamera = true
+        focusCamera(on: MapLocationFocus(coordinate: candidate.coordinate, generation: operationGeneration))
     }
 
     func focusCamera(on focus: MapLocationFocus) {

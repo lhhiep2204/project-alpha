@@ -40,7 +40,8 @@ final class MapContainer {
         MapView(
             viewModel: MapViewModel(
                 router: router,
-                deviceLocationService: deviceLocationService
+                deviceLocationService: deviceLocationService,
+                placeSearchService: placeSearchService
             )
         )
     }
