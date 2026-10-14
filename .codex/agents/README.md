@@ -1,79 +1,28 @@
-# ProjectAlpha custom agents
+# ProjectAlpha agent routing and ownership
 
-These project-scoped agents follow the repository `AGENTS.md` and the approved design in `docs/`. They are optional specialists; a request must not automatically run every agent or every gate.
+[AGENTS.md](../../AGENTS.md) owns shared safety, contracts, clarification, source rules and evidence. Keep all 16 optional specialists; load relevant contract sections and skills on demand. Runtime operators use [runtime-workflows.md](runtime-workflows.md); source-only tasks do not need runtime procedures.
 
-## Routing and token policy
+## Choose work by risk
 
-The primary agent performs a lightweight risk triage first: docs/read-only, small bug, Domain/Data, UI/navigation, or cross-cutting/release. Use `projectalpha_spec_tracer` only for new cross-cutting work, unclear requirements, or work spanning multiple ownership areas. A clear, narrow request can go directly to its owner.
-
-`AGENTS.md` is the source of truth for clarification, ownership, working-tree safety, architecture, and evidence rules. Do not repeat those rules in every handoff. Never run two write-capable agents against the same file at the same time. Subagents consume additional tokens, so each one gets a narrow scope and returns a concise evidence summary rather than raw logs.
-
-Every owner applies the `AGENTS.md` performance and app-size priority to its slice. Handoffs state the expected impact on startup, interaction smoothness, memory, storage, and bundled size as relevant, plus actual measurements or the remaining evidence needed. Architecture review checks avoidable work and unbounded resource use; build/release gates record size changes; device QA measures responsiveness on the documented physical-device workload. Do not label estimates as measured results.
-
-## Adaptive Apple UI/UX ownership
-
-- Scene navigation owns the adaptive tab/sidebar and stack/split route shell.
-- Feature owners own adaptive rendering inside their existing boundaries; composition owns only wiring.
-- Architecture review checks semantic state continuity and anti-patterns; device QA owns actual resize, input, accessibility, and Duo evidence.
-- Follow the adaptive contract in `AGENTS.md`. Xcode 27.1/Duo limitations remain `BLOCKED`; never substitute an ordinary simulator or invent an API.
-
-## Build iOS Apps coordination
-
-The installed Build iOS Apps plugin provides reusable skills and a separate `xcodebuildmcp` server. Custom agents retain their existing ownership; skills provide methods within that ownership. Read this section before using plugin workflows. Select skills by the actual task, and load only the relevant references. Pure Domain/persistence work need not invoke a UI skill.
-
-Resolve instructions in this order: applicable system/developer and explicit user instructions, repository `AGENTS.md` and approved product contracts, the assigned role/file scope, project SwiftUI/SDK guidance, then compatible plugin methods/examples. A plugin example does not approve a product/architecture change. When a real choice or contradiction remains unresolved, follow the repository clarification gate and ask the product owner before the affected action.
-
-### Skill routing
-
-Names below are selected from the active catalog as `build-ios-apps:<skill>`. Resolve the installed skill path there; do not pin a user-specific plugin-cache path or copy the plugin into the repository. If a required skill/tool is missing, report that operation `BLOCKED`; continue only independent work.
-
-| Plugin skill | Task trigger | Owner / evidence boundary |
+| Task risk | Primary executor and delegation | Verification |
 |---|---|---|
-| `swiftui-ui-patterns` | Screen, form, list, navigation or control composition | Assigned UI owner; scene owns routing, composition owns root wiring. Load project `swiftui-specialist` and relevant `swiftui-whats-new-27` references. |
-| `swiftui-view-refactor` | Requested structural refactor or required extraction in an assigned view | Existing view owner; preserve Presentation models, injection, lifecycle and behavior. Reviewer checks the result without editing. |
-| `swiftui-liquid-glass` | Implement/review an approved Liquid Glass surface | Owning feature; shared design-system/toast belongs to settings. Verify the installed SDK and accessibility behavior. |
-| `swiftui-performance-audit` | SwiftUI responsiveness symptom or material rendering risk | Investigator diagnoses; reviewer audits; production owner fixes; QA supplies runtime measurements when required. |
-| `ios-app-intents` | P-08 collection entity/query/widget configuration | Widget owner only within approved snapshot/configuration scope; scene supplies URLs and composition supplies target/App Group wiring. |
-| `ios-debugger-agent` | Assigned simulator runtime reproduction/debugging | Investigator/QA operates runtime diagnostics/UI; the build gate operates final build/tests. All use plugin tools within one session protocol. |
-| `ios-memgraph-leaks` | Concrete retained-object/leak or memory-growth investigation | One investigator/QA collector captures; reviewer can analyze supplied evidence; production owner fixes. |
-| `ios-ettrace-performance` | Focused simulator CPU/launch/runtime profile with authorized instrumentation | Composition owns temporary wiring in an isolated task copy; one investigator/QA collector captures and analyzes. Simulator evidence is diagnostic. |
-| `ios-simulator-browser` | User requests a browser simulator mirror or package-backed preview | One assigned investigator/QA operator; mirror the discovered UDID and verify a rendered frame. Package preview requires an existing importable Swift package. |
+| Low: bounded, understood, reversible, behavior-preserving | Main implements, writes a focused regression if warranted and executes checks. Usually zero children. | Relevant diff/static checks, focused tests/compile as appropriate; self-verification is not independent review. |
+| Medium: meaningful feature/state/lifecycle work | Main identifies the owning layer; select an implementer, test author or focused reviewer only for useful expertise/independence. | Affected tests, appropriate build and focused semantic review for meaningful state/lifecycle concerns; assigned device cases only. |
+| High: identity/invariants, atomicity/migration, concurrency/cancellation, shared state or major architecture | Main coordinates selected owners and separate semantic reviewer/final runner. Independent test design for complex integrity cases. | Relevant full tests/builds, data/migration/concurrency/media failure checks and required device evidence. |
 
-### Adapt plugin examples to ProjectAlpha
+A one-line persistence, identity or cancellation change may be high risk. Escalate routing when investigation exposes such effects. Product/public-contract changes need prior approval under AGENTS.md. Infrastructure-only changes use TOML/Markdown/preservation checks, with no app build or device run.
 
-- The MV-first and `@Query` examples in `swiftui-view-refactor` are not an instruction to remove injected Presentation models, introduce SwiftData in views, or replace app-owned services. Keep Domain/Data/Presentation/App boundaries and existing cheap model initialization/lifecycle ownership.
-- Navigation, sheets and App Intents examples must use the existing per-scene coordinator and the scene owner's URL encoder. Sheet dismissal participates in dirty-draft protection and real coordinator acknowledgement. Do not add a second router, route path, modal owner, or app-global service owner.
-- App Intents support is limited to approved widget configuration. Generic AppShortcutsProvider/Siri/Spotlight/control suggestions do not expand v1 scope or authorize a new target.
-- Literal strings, live-service examples and preview fixtures in plugin snippets must be adapted to repository constants/localization, deterministic inputs and owning-layer rules. Every materially changed production View retains a nearby `#Preview` in all build configurations.
-- Liquid Glass guidance uses ProjectAlpha's verified deployment target; do not add dead earlier-OS branches merely to copy a snippet. Preserve real Reduce Transparency/Motion and accessibility fallbacks. New symbols still require declaration/availability checks and a focused compile.
-- An approved Liquid Glass requirement applies to each named surface and its contained controls. Feature owners load `swiftui-liquid-glass` for cards and child actions as well as standalone controls; do not infer that a card is excluded because it is not a system bar/control.
-- Runtime/evidence roles remain read-only even when a skill says to patch a leak, refactor code, or link a framework. Route that step to the declared writer and verify against the task baseline.
-- ETTrace requires explicit authorization for temporary third-party instrumentation before downloads, host installation or linking. Composition works in an isolated, checksummed task copy outside the repository, owns all project/Info/embedding edits and removal, and returns restoration evidence. No instrumentation enters shipping builds. The primary orders preparation/build before capture; do not ask a read-only collector to modify project files. If this setup is not approved, report the ETTrace step blocked and use available read-only evidence.
-- Browser mirroring is optional and starts only for a requested browser workflow. Keep helper artifacts outside the repository, clean up only the assigned UDID/helper, and do not leave watchers running. ProjectAlpha is currently an Xcode app with no `Package.swift`; package-preview hot reload is unavailable unless that prerequisite changes under an approved task. Never restructure the project or edit build settings to force support.
+Do not require a tracer/investigator for already understood work. Use the tracer for substantial contract/dependency mapping, investigator for difficult reproduction/root cause, and specialists for significant technical ownership. Avoid delegation that duplicates loaded context, repeats checks or forces serial handoff without adding expertise. Four children plus primary is a ceiling, not a target; default serial execution.
 
-### Tools and evidence
+## Ownership and write leases
 
-The project `xcode` server is Apple's Xcode MCP (`xcrun mcpbridge`), distinct from the plugin's XcodeBuildMCP server. Both are inherited when enabled and exposed to the session; verify actual availability rather than assuming inheritance succeeded. Do not add duplicate project/per-agent servers or override plugin permissions/model settings for this integration.
+Main may assume an owner responsibility for bounded authorized work and perform related edits serially (including a focused test and shared localized key). Delegated specialists keep the ownership/exclusions below and in their TOMLs; production specialists never edit test targets. Substantial Xcode/configuration work belongs to composition. Product-contract changes go to the contract maintainer; infrastructure checkpoints may be maintained by main.
 
-Use Build iOS Apps skills/tools first for supported build, run, test, simulator UI, logs and debugging operations. Custom agents coordinate scope, ownership, sequencing and evidence; they use the plugin's callable MCP tools to perform those steps rather than maintain a competing implementation of the workflow. The plugin is a skill/tool package, not an independently running replacement for a custom agent.
+Before delegation, state its independent value and exact files/paths, relevant contract IDs/sections, approved decisions, immutable baseline, dependencies, required evidence and stop condition. Use bounded fresh context where supported; forward full history only for a concrete need. Every writer/reviewer reads the shared core and exact active contracts; a handoff cannot override them.
 
-Use Apple `xcode` MCP only for a required operation the exposed plugin tools do not support (for example, first-party Xcode workspace/SDK evidence or a specific Device Hub/device-session capability). Record the capability gap, selected backend and reason before switching, transfer the runtime/session cleanly, and load project `device-interaction` for UI/device work through either backend. A temporary failure is not evidence of unsupported functionality: diagnose/report it rather than silently bypassing the plugin. If no available backend can produce the required evidence, that case is `BLOCKED`.
+Reserve explicit file leases, including catalogs, preview fixtures, generated output and configuration. Recheck status/diff on assignment/release. Never overlap writers; settle shared interfaces before dependent implementation. Separate worktrees do not isolate runtime/defaults/helpers and do not automatically include dirty/untracked input. Preserve working-tree baselines without manufacturing a commit.
 
-- The final build gate uses compatible plugin build/test tools first and records the exact tool/command, source/baseline identity, selected destination, build configuration, isolated `/tmp` DerivedData/result bundle and signing override. Plugin smoke builds/profiles are not a second final verdict. Use `CODE_SIGNING_ALLOWED=NO` for simulator verification; use `xcodebuild` for reproducible final gates when needed for destinations/flags/result bundles the MCP workflow cannot express.
-- Read the current tool metadata before calling it. Static skill examples may name `describe_ui` or log tools that the active server no longer exposes; use only actual compatible tools/schemas, not guessed aliases. `session_show_defaults` is required before the first XcodeBuildMCP build/run/test in each agent session. Validate the project/workspace, scheme and discovered eligible iOS 27 simulator; set missing/wrong defaults only while owning the session. Preserve the required runtime/configuration rather than blindly copying `useLatestOS` from an example. Use ephemeral defaults (`persist: false`) and a task-specific profile when supported; never create `.xcodebuildmcp/config.yaml` or persist machine-local UDIDs as a side effect. Tool mechanics do not bypass project scope or evidence rules. Build-only/test-only assignments use the corresponding tools; a generic tool instruction to build-and-run is applied only to a requested run workflow, not a policy audit or compile-only gate.
-- Simulator traces, memgraphs, browser frames and source inspection retain their own proof limits. They cannot replace AC-65 physical-device measurements, AC-66 installed-size measurements, required accessibility/input interactions or Xcode 27.1/Duo evidence. A new build/source change requires current evidence for the applicable gates.
-
-### Session and handoff protocol
-
-The primary assigns one operator at a time for a simulator/device and one mutating operation at a time for a shared Xcode workspace, XcodeBuildMCP defaults, debugger attachment or profiling helper. Isolated DerivedData alone does not isolate shared runtime/defaults. Reserve the active XcodeBuildMCP session/defaults profile for the entire assigned runtime workflow, including capture and cleanup; another operator must not switch that active profile mid-flow. ETTrace uses a fixed host-side localhost port: reserve it for the entire trace lifecycle and run only one ETTrace-instrumented simulator app on that host at a time, even when UDIDs differ. Do not run build/install/launch/UI automation, XCTest UI, LLDB, memgraph/ETTrace capture or browser driving concurrently against the same runtime. Read-only source reviews can run in parallel.
-
-Before runtime work, the primary handoff names the operator, purpose (diagnostic or acceptance), backend, workspace/project, scheme, discovered UDID/runtime, source/checksum baseline, exact app/build artifact, evidence directory, requested ACs/flow and cleanup responsibility. Discover any missing identifier through read-only tooling; ask when the assignment/ownership or required evidence is unclear.
-
-End log capture/debugger/profile/browser helpers and the device session before transferring control. Release or explicitly transfer resources/defaults and record their current values; the next operator rechecks rather than reuses stale state. A stale-session service restart requires confirming that no other agent/chat owns the service. Do not erase a simulator, clear shared defaults, kill another helper, reset settings or restart Xcode as a generic retry.
-
-When an Xcode device-session response requires subagent UI events, the parent prepares the assignment and delegates to `projectalpha_device_ux_qa` as specified in the project `device-interaction` skill. Preparation is not a second UI operator; keep one current session key and end the session once.
-
-Return a concise handoff: assigned files/responsibility, AC/INV/D mapping, baseline and changed-file identity, skills actually read, backend/tool actions/results, evidence paths, performance/size impact (measured or unverified), cleanup/next owner, approved deviations and blocked/unrun cases. The primary alone combines independent applicable gates into an AC/slice verdict.
+Exact shared boundaries: scene owns `Presentation/Features/MainTabs/**` and URL grammar/encoding; settings owns preferences/design-system/localization/formatting paths and catalogs; composition owns root/DI/bootstrap/project/release wiring and `Shared/Utilities/**`. Widget owns snapshot/publisher behavior, composition registers it. Library owns the shared Photo Viewer; Domain owns immutable LocationDraft, library owns its mutable editor state. Feature preview fixtures follow the feature owner.
 
 ## Discovery and diagnosis
 
@@ -106,18 +55,20 @@ Return a concise handoff: assigned files/responsibility, AC/INV/D mapping, basel
 | `projectalpha_build_verification_gatekeeper` | Read-only execution and classification of build/test/whitespace gates. |
 | `projectalpha_device_ux_qa` | Read-only device, localization, accessibility, widget, and performance acceptance evidence. |
 
-## Risk-based workflows
+## Skills and reference loading
 
-- Docs/read-only: primary agent only, or `projectalpha_contract_maintainer` after explicit product-owner approval; run documentation checks only.
-- Small clear bug: owner -> affected regression test -> final build gate. Use `projectalpha_bug_investigator` only when reproduction/root cause is uncertain. Add architecture review for concurrency, persistence, routing, or invariant risk.
-- Domain/Data/Persistence: owner -> affected tests -> architecture review when atomicity, concurrency, identity, or lifecycle is involved -> final build gate. No device QA.
-- UI/navigation: feature owner -> model/UI tests -> architecture review when state/routing/lifecycle is involved -> final build gate -> device QA only when the AC requires manual/device evidence.
-- New cross-cutting or release/widget work: `projectalpha_spec_tracer` -> non-overlapping production owners -> acceptance-test author -> architecture review -> final build gate -> device QA only for applicable ACs.
+- SwiftUI implementation/review: project `swiftui-specialist`, only affected references; `swiftui-whats-new-27` for changed APIs or related compiler errors. Approved Liquid Glass surfaces include contained actions and require `build-ios-apps:swiftui-liquid-glass`.
+- UI composition/refactor/performance: relevant Build iOS Apps skill within the assigned view/layer. Examples cannot introduce @Query in Presentation, another router/service owner, live previews or unapproved product changes.
+- Widgets: `build-ios-apps:ios-app-intents` only for approved snapshot-based collection configuration; no extra Siri/Shortcuts/Spotlight/control surface.
+- Runtime/debug/leak/profile/browser: load the corresponding runtime-workflows sections and project device skill when UI evidence is needed. One operator holds shared resources through cleanup; read-only collectors never instrument or fix production.
+- Test modernization and security audit skills activate only for those actual requests. They do not authorize incidental migrations, security settings edits or additional agents.
 
-Production agents provide the smallest deterministic test matrix and may run a focused smoke check; they do not run the full suite by default. The acceptance-test agent authors/updates tests and may run only newly affected tests to catch authoring errors; it does not run the full suite or final UI matrix. The build gate is the single authoritative final runner. Adaptive source review belongs to the architecture reviewer, while device UX QA owns actual manual/device evidence.
+## Verification and compact handoff
 
-A production agent must hand Xcode project, entitlement, or target-membership edits to `projectalpha_composition_integrator`.
+Designate one final runner per source revision. Main runs low-risk and suitable medium checks; build gatekeeper supplies required independent execution. Test-author smoke checks are optional feedback. Reuse successful relevant evidence if source/environment are unchanged; rerun for material edits, failures or unresolved concerns. High-risk semantic review must be separate from implementation/self-review.
 
-Custom-agent format follows the official OpenAI Codex project-agent convention: one TOML file per agent under `.codex/agents/`.
+Release checks apply to release/project/resource, configuration-sensitive preview changes, large/cross-cutting slices or explicit gates. Widgets require actual extension scope. Adaptive review/device matrix follows assigned ACs; do not turn an isolated view task into whole-app QA. A compile/launch/frame is not proof of accessibility, RTL, input, physical performance/size or Duo behavior. Report affected unavailable evidence BLOCKED.
 
-SwiftUI owners keep `#Preview` and deterministic preview fixtures available in every build configuration, without `#if DEBUG` wrappers. When a production/configuration slice requires a Release check, the build gate checks compilation and flags preview-only conditional compilation that hides broken fixtures. Agent-policy-only changes require configuration/Markdown checks, not an app build.
+Return: outcome/scope; AC/INV/D and approved input; files/baseline; key findings/seams; exact checks/results/evidence paths; performance/size impact or unmeasured status; cleanup/next owner; limitations/deviations. Do not paste global rules, full logs or repeated plans. Only primary issues AC/slice verdicts after every applicable current independent gate; low-risk main-only work cannot be described as independent acceptance.
+
+Permissions come from the parent session. Repository-read-only roles are behavioral restrictions, not isolated per-agent sandboxes. No role/model/default configuration change is implied by this guide.

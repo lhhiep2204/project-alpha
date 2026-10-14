@@ -6,8 +6,11 @@ description: "Modernize test suites to use modern Swift Testing features or migr
 
 Test modernization refers to two potential actions: migrating from XCTest to Swift Testing, and updating existing Swift Testing tests to use recommended patterns.
 
-XCTests should be migrated to Swift Testing when possible. However, not all XCTests can be migrated to Swift Testing.
+Activate only for an actual requested test modernization/migration. Ordinary bug fixes and regression authoring do not authorize opportunistic migration. Main handles bounded modernization; delegate to the test owner only for meaningful complexity or independent design. Preserve test-only ownership when delegated.
+
+Within approved modernization scope, migrate eligible XCTest coverage to Swift Testing. Verify the installed Testing API/availability before using a new trait, cancellation or attachment API; preserve existing behavior. Not all XCTests can migrate.
 - UI tests (those that use XCUIAutomation) cannot be written with Swift Testing, and must remain XCTests.
+- Critical UIKit/SwiftUI lifecycle coverage that requires XCTest remains XCTest.
 - XCTests that use the `measure { ... }` family of APIs for performance measurement cannot be migrated. However, other test methods within an XCTestCase that do not use XCTest performance APIs can be migrated.
 
 ## Migration Reference
@@ -179,9 +182,11 @@ await fulfillment(of: [exp])
 // After
 await confirmation("...") { confirm in
     handler = { confirm() }
-    doWork()
+    await workAndWaitForCompletion()
 }
 ```
+
+`confirmation` checks its count when its body returns; it does not wait for callbacks. Await the actual operation/completion inside the body through a deterministic async seam (such as a safely resumed continuation), keeping all expected callbacks inside its lifetime. Do not replace an XCTest wait with fire-and-forget work or wall-clock sleeps. Preserve timeout/failure/cancellation and over-fulfillment behavior.
 
 For `assertForOverFulfill = false` with an `expectedFulfillmentCount`, use a range:
 `await confirmation("...", expectedCount: 10...) { confirm in ... }`
@@ -242,4 +247,4 @@ improve readability, e.g. `@Test func `Authenticate, fetch summary, then check c
 - Do not introduce usage of underscore-prefixed symbols such as `#_sourceLocation`; only use public API.
   For source locations, always use the full `SourceLocation(fileID:filePath:line:column:)` initializer.
 - If the test suite already uses #_sourceLocation, do not replace the existing usage as part of modernization.
-- Split this work over multiple agents if necessary if the modernization task is complex
+- Use selective delegation only when a complex modernization benefits from separate expertise or independent coverage. Run affected tests; leave required broader final execution to the designated runner, without repeating unchanged checks.

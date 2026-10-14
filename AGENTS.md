@@ -4,34 +4,39 @@ These instructions govern every task in this repository, including work delegate
 
 ## Authority and current state
 
-- Read `README.md` and `docs/README.md` before changing code.
+- For application work, read the relevant current guidance in `README.md` and `docs/README.md` once, then the task-specific contract sections below. Infrastructure-only work does not require unrelated product or Swift source reading.
 - Treat `docs/01-product-and-decisions.md` through `docs/09-apple-technology-references.md` as the approved target product and architecture contract.
 - Treat the checked-out source, `ios/ProjectAlpha/ProjectAlpha.xcodeproj/project.pbxproj`, and `docs/10-scaffold-architecture-verification.md` as the authority for the scaffold's current implementation state.
 - The source currently confirms that app and test targets use Swift 6 and target iPhone/iPad device families (`1,2`). Do not regress either setting; recheck source/project settings before changing current-state documentation.
 - If documents disagree about user-visible behavior, data identity, feature scope, or an invariant, stop and ask the product owner. Do not silently select a contract.
 - `U-*` entries are confirmed product decisions, `D-*` entries are engineering decisions, `INV-*` entries are invariants, `AC-*` entries are acceptance criteria, and `FUTURE` is explicitly out of current scope.
 
-## Clarification gate
+## Risk-based clarification
 
-- If any question, uncertainty, ambiguity, contradiction, missing requirement, unclear ownership, unsupported or unverified API, or unclear evidence expectation arises at any time, stop before making the affected assumption or change and ask the user.
-- Never infer a product/UX choice, silently choose a default, widen scope, or mark work complete while such a question is unresolved. Read-only investigation may continue only when it cannot commit the work to one of the unresolved choices.
-- Resume the affected work only after the user answers. Record the answer in the relevant handoff; approved contract changes still belong to `projectalpha_contract_maintainer`.
+- Ask before an unapproved change to product behavior/UX requirements, Domain invariants, data identity or persistence semantics, SwiftData migrations, public/cross-module contracts, external dependencies, destructive operations, or major architecture. Existing explicit approval covers the named scope; do not request it again.
+- Contradictory approved contracts block the affected choice. Do not invent a product default or expand scope. Read-only investigation and unaffected work may continue while awaiting the owner; record approved answers in the handoff. Approved product-contract edits belong to `projectalpha_contract_maintainer`.
+- Proceed autonomously with internal naming, small implementation decisions, behavior-preserving refactors, test organization, equivalent technical implementations, and minor non-breaking organization. Record a material assumption briefly for review.
+- Investigate API facts and ownership through read-only evidence before asking. Never guess an unsupported API, fabricate a Swift creation date, silently alter the deployment target, or claim unavailable evidence. If an equivalent implementation would change approved behavior, ask; if required evidence cannot be produced, report that case `BLOCKED` without blocking unrelated work.
 
-## Required reading by task
+## Selective context and task routing
 
-For every implementation slice, read `docs/README.md`, docs 01, 03, 04, 08, and the exact feature documents needed for the requested slice. Do not read unrelated feature documents or the full specification set for every task.
+Main handles clear low-risk work directly, including focused tests and verification; self-checks are not independent review. One-line persistence, identity, cancellation, concurrency or invariant changes may be high risk.
 
-- Ambiguous, cross-cutting, or new product work: `projectalpha_spec_tracer` reads docs 01, 03, 04, 08, and 10 plus relevant feature documents, then gives downstream agents the exact contract IDs and reading set.
-- Collection/location CRUD: docs 02 and 04.
-- Navigation, restoration, or external intents: docs 05 and 07.
-- Maps, search, location detail, position, ETA, directions, or sharing: docs 02, 05, 06, and 09.
-- Widgets: docs 04, 05, 07, and 09.
-- Persistence, concurrency, or media: docs 03, 04, and 08.
-- Settings, localization, accessibility, or release configuration: docs 01, 02, 08, and 09.
-- Current scaffold or project-setting claims: docs 10 plus the relevant source/project settings.
-- UI/API adoption: read current Apple guidance and verify the declaration/availability only when the task uses that API or acceptance evidence.
+Read relevant sections once, with enough context to detect conflicts: docs 01 decisions/exclusions, 03 affected layer/lifetimes, 04 affected data/invariants, 08 assigned P/AC dependencies/evidence. Do not load the whole index or historical records for every task. Additional reading:
 
-Build iOS Apps supplies `xcodebuildmcp`; use its skills and exposed MCP tools first for supported build, run, test, simulator UI, logs, and debugging. Custom agents coordinate ownership, sequencing, and evidence. The separate project-scoped Apple `xcode` server is `xcrun mcpbridge`; use it for required capabilities the plugin tools do not support, recording the gap and backend handoff. Follow `.codex/agents/README.md` and project `device-interaction` for UI/device evidence. If the required operation/evidence is unavailable, report `BLOCKED`; do not claim UI/device evidence. Keep screenshots, logs, result bundles, and traces outside the repository.
+- CRUD: 02 journeys, 04 data/duplicates.
+- Navigation/restoration/intents: 05; 07 for widget intents.
+- Maps/search/detail/position/ETA/directions/share: affected 02, 05, 06, 09 sections.
+- Widgets: 04 snapshot boundary, 05 URLs, 07, relevant 09.
+- Persistence/concurrency/media: affected 03, 04, 08 sections.
+- Settings/localization/accessibility/release: relevant 01, 02, 08, 09 sections.
+- Current scaffold/project claims: 10 and relevant source/settings.
+- UI/API adoption: relevant Apple guidance plus installed declaration/availability and focused compile.
+- Infrastructure only: approved request and exact affected policy/skill files; no unrelated app contracts/source.
+
+Use the [routing guide](.codex/agents/README.md) to select specialists for meaningful expertise, substantial work or required independence. Handoffs give exact paths/sections, IDs, approved decisions, baseline, leases, dependencies and verification; prefer bounded fresh context unless history is necessary. Tracer/investigator activation is conditional.
+
+For build/run/test/UI/log/debug operations, use Build iOS Apps `xcodebuildmcp` skills/tools first and load applicable [runtime workflows](.codex/agents/runtime-workflows.md); UI/device evidence also uses project `device-interaction`. Apple's `xcode` MCP (`xcrun mcpbridge`) supplies required unsupported capabilities after a recorded gap and clean handoff. Artifacts stay outside the repository; unavailable evidence is `BLOCKED` for that case.
 
 ## Working-tree safety
 
@@ -40,8 +45,8 @@ Build iOS Apps supplies `xcodebuildmcp`; use its skills and exposed MCP tools fi
 - Before any write-capable agent edits an untracked file, the orchestrator must provide an immutable baseline: either a tracked/staged Git baseline explicitly established by the owner, or a task-specific snapshot outside the repository with file inventory and checksums. Record the baseline identity/path in every writer and reviewer assignment. If no such baseline exists, the write task is `BLOCKED`; never run `git add` or commit merely to manufacture one without owner authorization.
 - When reviewing untracked work, compare against that recorded snapshot (or an owner-provided patch). A plain `git diff` is not change attribution for untracked files.
 - Never reset, replace, delete, or broadly reformat files outside the assigned scope.
-- Do not edit a file concurrently with another write-capable agent. Parallelize read-only exploration, test execution, or reviews; serialize overlapping edits.
-- Only `projectalpha_composition_integrator` may edit `project.pbxproj`, target membership, generated Info settings, entitlements, bundle identifiers, URL registration, or signing-related project configuration. Other agents must hand those changes off.
+- Hold explicit file write leases, including catalogs, previews, generated files and project settings. Never overlap writers. Read-only exploration/reviews may overlap; shared builds, runtimes, defaults and helpers also require exclusive resource reservations under runtime workflows.
+- Among delegated agents, only `projectalpha_composition_integrator` may edit `project.pbxproj`, target membership, generated Info settings, entitlements, bundle identifiers, URL registration, or signing-related project configuration. Other delegated agents must hand those changes off. The main agent may assume an owner responsibility for bounded authorized work, serially under the same safeguards; substantial project/configuration work goes to composition.
 - Exact shared ownership: scene navigation owns `Presentation/Features/MainTabs/**`; settings/localization owns `Shared/Preferences/**`, `Data/Preferences/**`, `Presentation/Preferences/**`, `Presentation/DesignSystem/**`, `Presentation/Localization/**`, and `Presentation/Formatting/**`; composition owns app/release assets and `Shared/Utilities/**`. Feature-specific preview fixtures belong to that feature owner.
 
 ## Swift file headers
@@ -104,30 +109,32 @@ Build iOS Apps supplies `xcodebuildmcp`; use its skills and exposed MCP tools fi
 1. Classify the request against P-00 through P-09 and list affected U/D/INV/AC identifiers.
 2. Inspect the real execution path and surrounding tests before editing.
 3. For a bug, reproduce or establish the failure from evidence, identify the owning layer, and define a regression test at the lowest meaningful boundary.
-4. Make the smallest coherent change inside the assigned agent's ownership. Request a handoff for cross-owner files instead of expanding scope silently.
+4. Make the smallest coherent change. Delegated writers stay inside their ownership/lease and hand off cross-owner files; main may assume bounded owner responsibilities serially without widening approved scope.
 5. Keep deterministic seams for clocks, IDs, provider requests, permission states, media files, and failures. Never depend on live Apple search in automated tests or wall-clock sleeps for correctness.
-6. Run the smallest affected verification, then let the final build gate run the applicable broader checks once. A successful build alone does not satisfy an acceptance criterion.
+6. Select verification by risk below. Designate one final runner per source revision; reuse relevant unchanged evidence. A successful build alone does not satisfy an acceptance criterion.
 7. Update product decisions and acceptance criteria together only when the product owner approved a behavior/scope change. A normal bug fix should not rewrite the specification.
 
-## Verification and reporting
+## Risk-based verification and reporting
 
-- Use Swift Testing for Domain, presentation-model/coordinator, and integration tests. Use XCTest UI only for critical end-to-end or UIKit lifecycle behavior.
-- Store tests use in-memory SwiftData but verify real save/reload/rollback/concurrency behavior. Media tests use isolated temporary directories. Provider and permission tests use deterministic fakes.
-- Select an actually installed iOS 27 simulator; do not hard-code an old simulator UUID. Use an isolated DerivedData path under `/tmp` and `CODE_SIGNING_ALLOWED=NO` for simulator verification.
-- Adaptive UI verification must exercise iPhone portrait/landscape, iPad full/half/third/quadrant/floating minimum-to-maximum widths, keyboard and pointer input, accessibility configurations, and iPhone Duo outer/inner/open/closed/partially folded and multitasking configurations when the required Xcode 27.1 Device Hub/runtime is available. If it is unavailable, report `BLOCKED` for those cases and do not substitute source inspection or an ordinary iPhone/iPad simulator as Duo evidence.
-- Distinguish product failures from simulator service, sandbox, signing, or environment failures.
-- Run `git diff --check`; when source is untracked, also inspect those files because Git diff does not cover them.
-- Never claim device, accessibility, RTL, widget, performance, or participant testing unless it was actually run in the required environment.
-- Include performance and size impact in each implementation handoff, even when the impact is expected to be negligible. Reviewers and gates check for avoidable main-thread stalls, unbounded work/caches, unnecessary resources, and measured regressions within their assigned evidence scope.
-- Every completion report must state: assigned scope, affected AC/INV/D identifiers, changed files, exact commands and results, manual checks, remaining limitations, and any approved deviation.
-- Implementers may report `implementation complete; independent verification pending`. Only the primary orchestrator may declare an AC or slice `READY`/`PASSED`, and only after every applicable independent test, review, build, and device gate has reported current evidence.
-- The acceptance-test engineer authors/updates tests and may run only newly affected tests for fast feedback; it does not run the full suite or final UI matrix. The build-verification gatekeeper is the single authoritative final test/build runner.
-- Run the full test suite, Release build, widget build, adaptive source audit, or device QA only when the changed slice or assigned AC requires it. Architecture review owns semantic adaptive/concurrency review; the build gate owns final execution and mechanical checks.
+| Risk | Verification |
+|---|---|
+| Low | Relevant diff/static checks; focused tests/compile when appropriate. Main may execute. Avoid tests that mirror cosmetic implementation. |
+| Medium | Affected tests, appropriate build and focused semantic review for meaningful state/lifecycle risks. Delegate when valuable or required by an AC. |
+| High | Relevant full tests/builds; independent semantic review and final execution; affected integrity/migration/concurrency/media checks; required device evidence. Independent test design for complex integrity cases. |
+
+- Swift Testing covers Domain, presentation models/coordinators and integration. Preserve critical XCTest UI/UIKit lifecycle and XCTest performance exceptions. Store tests use in-memory SwiftData with actual save/reload/rollback/concurrent attempts; media uses isolated temporary directories; providers/permissions/clocks use deterministic fakes.
+- Runtime checks discover an installed iOS 27 destination, isolate DerivedData/results under `/tmp`, and use `CODE_SIGNING_ALLOWED=NO` for simulators, with runtime reservations and recorded plugin-first fallbacks.
+- Full suite/Release/widget/adaptive/device gates depend on impact and assigned ACs. Release applies to release/project/resource, configuration-sensitive preview changes, large/cross-cutting slices or explicit gates; widgets require extension scope. Policy-only edits need no app build/device session.
+- AC-57–60 retains required iPhone portrait/landscape, iPad full/half/third/quadrant/floating minimum-to-maximum widths, keyboard/pointer/accessibility and Duo display/pose/multitasking evidence. Run the assigned AC matrix; missing Xcode 27.1 Device Hub/runtime blocks Duo. Ordinary simulators/source inspection cannot substitute. Physical performance/size and participant gates remain in doc 08.
+- Run `git diff --check`; directly check edited untracked files against the baseline. Classify product vs service/simulator/sandbox/signing/environment failures. Never claim unexecuted device/accessibility/RTL/widget/performance/participant evidence.
+- One final runner per revision: main for low/appropriate medium risk; build gatekeeper for required independence. Test-author affected-test feedback is optional, not another full/UI run. Reuse unchanged relevant evidence; rerun for material edits, failures or unresolved concerns. Independent reviewer owns required semantic adaptive/concurrency review.
+- Completion/handoff states scope, AC/INV/D, files/baseline, exact tools/commands/results, manual checks, performance/size impact (measured or unverified), limitations and approved deviations. Link logs; keep summaries compact.
+- Only primary declares AC/slice `READY`/`PASSED` after all applicable current independent gates. Main-only low-risk completion is not independent acceptance; report `implementation complete; independent verification pending` when required gates remain.
 
 ## Project skill routing
 
 - Project skills live under `.agents/skills/`. Load the relevant `SKILL.md` and its referenced material when the task matches; all agents working in this repository can use these skills.
-- Build iOS Apps complements these skills within existing agent ownership. Before using it, read the shared skill-routing, tools/evidence, and session/handoff protocol in `.codex/agents/README.md`; load only task-relevant plugin skills. Plugin examples do not authorize architecture/product changes, cross-owner edits, new system surfaces, instrumentation dependencies, or a competing final gate.
+- Build iOS Apps complements these skills within existing agent ownership. Select only task-relevant skills from the routing guide; runtime operators read the applicable sections of `.codex/agents/runtime-workflows.md`. Plugin examples do not authorize architecture/product changes, cross-owner edits, new system surfaces, instrumentation dependencies, or a competing final gate.
 - For SwiftUI implementation or review, use `swiftui-specialist`.
 - When an approved product or feature contract calls for Liquid Glass, load `build-ios-apps:swiftui-liquid-glass` for every applicable SwiftUI surface, including cards and their contained actions; do not limit it to standard controls. Read the feature contract to identify the required glass surfaces, compact control treatment, and Reduce Transparency fallback before implementation.
 - For every production SwiftUI `View` a task creates or materially changes—including screens, subviews, reusable components, and generic view wrappers—add at least one `#Preview` next to the view. Give it representative deterministic inputs and preview-only fixtures; do not connect previews to live services or persistent user data. If a production view cannot be previewed without violating an architecture boundary, document the specific blocker in the handoff. Test-only view harnesses do not need previews.
@@ -140,10 +147,7 @@ Build iOS Apps supplies `xcodebuildmcp`; use its skills and exposed MCP tools fi
 
 ## Agent coordination
 
-- `projectalpha_spec_tracer` maps work to contracts and dependencies; it does not implement.
-- `projectalpha_contract_maintainer` updates approved product/architecture contracts and traceability in `README.md`/`docs/**`; no other custom agent edits those files.
-- `projectalpha_bug_investigator` establishes reproduction and root cause; it does not fix.
-- Production implementers modify only their declared ownership area and do not edit test-target files.
-- `projectalpha_acceptance_test_engineer` owns automated test-target changes and does not modify production code.
-- `projectalpha_architecture_concurrency_reviewer`, `projectalpha_build_verification_gatekeeper`, and `projectalpha_device_ux_qa` are independent read-only gates.
-- The default sequence is risk-based: triage -> owning implementer -> affected tests -> final build gate. Add spec tracing for ambiguous/cross-cutting work, architecture review for high-risk state/concurrency changes, and device QA only when the assigned AC requires manual/device evidence.
+- Retain all 16 specialists. Main-agent-first low-risk execution is an exception to delegated role separation, not a transfer of specialist file ownership. Main may implement and author focused tests serially, including related feature key/catalog edits; never label its own review independent.
+- Delegated production writers stay within their leased ownership and do not edit test targets. The acceptance-test engineer changes only tests. Composition is the delegated project/configuration writer. The contract maintainer alone among custom agents changes approved product/architecture contracts in README/docs; main may maintain infrastructure checkpoints without changing product contracts.
+- Tracer maps substantial contract/dependency questions; investigator diagnoses difficult defects without fixing. Reviewer, final gatekeeper and device QA stay repository-read-only. Parent-session permissions govern tools; behavioral read-only rules do not create an independent sandbox.
+- Medium work uses selected specialists when valuable. High-risk work requires separate semantic review and final execution; main coordinates dependencies and gates. Device QA is conditional on required manual/device evidence. No fixed all-agent pipeline; a role's existence is not a reason to spawn it.
