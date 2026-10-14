@@ -26,7 +26,6 @@ struct MainTabView<Home: View, MapContent: View, Settings: View>: View {
                 RouterView(router: coordinator.settingsRouter, destination: settings)
             }
         }
-        .tabViewStyle(.sidebarAdaptable)
     }
 }
 

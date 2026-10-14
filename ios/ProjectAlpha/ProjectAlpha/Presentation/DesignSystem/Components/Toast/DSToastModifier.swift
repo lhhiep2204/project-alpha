@@ -11,6 +11,7 @@ import SwiftUI
 /// Install once inside the scene's safe-area-respecting root content.
 struct DSToastModifier: ViewModifier {
     let manager: DSToastManager
+    var voiceOverOverride: Bool? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
@@ -37,11 +38,8 @@ struct DSToastModifier: ViewModifier {
                 }
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: manager.currentPresentation?.id)
-            .task(id: taskIdentity) {
+            .task(id: manager.currentPresentation?.id) {
                 guard let presentation = manager.currentPresentation else { return }
-                if voiceOverEnabled {
-                    return
-                }
                 do {
                     try await Task.sleep(for: max(presentation.duration, .zero))
                 } catch {
@@ -51,26 +49,21 @@ struct DSToastModifier: ViewModifier {
                 manager.dismiss(presentationID: presentation.id)
             }
             .task(id: announcementIdentity) {
-                guard voiceOverEnabled, let presentation = manager.currentPresentation else { return }
+                guard effectiveVoiceOverEnabled, let presentation = manager.currentPresentation else { return }
                 AccessibilityNotification.Announcement(
                     String(localized: presentation.resolvedMessage(locale: locale))
                 ).post()
             }
     }
 
-    private var taskIdentity: ToastTaskIdentity {
-        ToastTaskIdentity(presentationID: manager.currentPresentation?.id, voiceOverEnabled: voiceOverEnabled)
-    }
-
-    private struct ToastTaskIdentity: Equatable {
-        let presentationID: UUID?
-        let voiceOverEnabled: Bool
+    private var effectiveVoiceOverEnabled: Bool {
+        voiceOverOverride ?? voiceOverEnabled
     }
 
     private var announcementIdentity: ToastAnnouncementIdentity {
         ToastAnnouncementIdentity(
             presentationID: manager.currentPresentation?.id,
-            voiceOverEnabled: voiceOverEnabled,
+            voiceOverEnabled: effectiveVoiceOverEnabled,
             localeIdentifier: locale.identifier
         )
     }

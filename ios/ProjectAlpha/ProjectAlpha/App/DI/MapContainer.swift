@@ -41,7 +41,8 @@ final class MapContainer {
             viewModel: MapViewModel(
                 router: router,
                 deviceLocationService: deviceLocationService,
-                placeSearchService: placeSearchService
+                placeSearchService: placeSearchService,
+                reverseGeocodingService: reverseGeocodingService
             )
         )
     }

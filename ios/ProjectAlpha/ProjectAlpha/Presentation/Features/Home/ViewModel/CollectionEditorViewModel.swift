@@ -36,7 +36,15 @@ final class CollectionEditorViewModel {
     private(set) var latestConflict: Collection?
     private(set) var saveError: SaveError?
     private(set) var isSaving = false
-    var name: String
+    private var editableName: String
+
+    var name: String {
+        get { editableName }
+        set {
+            guard !isSaving else { return }
+            editableName = newValue
+        }
+    }
 
     var isCreating: Bool {
         if case .create = target { return true }
@@ -57,10 +65,10 @@ final class CollectionEditorViewModel {
         self.target = target
         switch target {
         case .create:
-            name = String()
+            editableName = String()
             originalName = String()
         case .edit(let collection):
-            name = collection.name
+            editableName = collection.name
             originalName = collection.name
             expectedRevision = collection.revision
         }

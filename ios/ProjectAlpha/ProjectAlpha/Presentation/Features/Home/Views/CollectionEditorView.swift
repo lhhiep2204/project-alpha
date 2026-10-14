@@ -99,6 +99,7 @@ struct CollectionEditorView: View {
             .textInputAutocapitalization(.words)
             .submitLabel(.done)
             .focused($focusedElement, equals: .name)
+            .disabled(viewModel.isSaving)
             .padding(.trailing, focusedElement != nil && !viewModel.name.isEmpty ? 44 : 0)
             .overlay(alignment: .trailing) {
                 if focusedElement != nil && !viewModel.name.isEmpty {

@@ -22,6 +22,14 @@ private enum OwnershipTestValue {
     static let originalModelLost = "The original model must remain owned by SwiftUI @State"
     static let featureIdentifierPrefix = "feature-"
     static let toastAppeared = "Constrained toast appeared"
+    static let toastDismissedWithVoiceOver = "VoiceOver toast dismissed at its configured duration"
+    static let editorAppeared = "Collection editor appeared"
+    static let editorSavingRendered = "Collection editor rendered saving state"
+    static let editorFailureRendered = "Collection editor rendered editable failure state"
+    static let editorOriginalName = "Trips"
+    static let editorDraftName = "Updated Trips"
+    static let disabledTextFieldPredicate = "enabled == NO"
+    static let enabledTextFieldPredicate = "enabled == YES"
     static let toastViewport = CGSize(width: 320, height: 120)
     static let minimumInteractiveSize = 44.0
     static let toastGeometryAttachment = "Toast public UIKit layout diagnostics"
@@ -202,8 +210,99 @@ final class ViewOwnershipTests: XCTestCase {
         XCTAssertGreaterThan(scroll.bounds.height, 0)
     }
 
+    /// AC-37/D-17: VoiceOver announcement must not suppress automatic dismissal.
+    /// The zero-duration fixture is observed through a state transition, without a timing sleep.
+    func testToastAutomaticallyDismissesWhileVoiceOverIsEnabled() async throws {
+        let dismissed = expectation(description: OwnershipTestValue.toastDismissedWithVoiceOver)
+        let manager = DSToastManager(currentPresentation: DSToastPresentation(
+            id: DSToastPreviewFixtures.identifier,
+            message: DSToastPreviewFixtures.message,
+            duration: .zero
+        ))
+        withObservationTracking {
+            _ = manager.currentPresentation?.id
+        } onChange: {
+            dismissed.fulfill()
+        }
+        let host = UIHostingController(rootView:
+            Color.clear.modifier(DSToastModifier(manager: manager, voiceOverOverride: true))
+        )
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousKeyWindow = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousKeyWindow?.makeKey()
+        }
+        await fulfillment(of: [dismissed], timeout: 5)
+        XCTAssertNil(manager.currentPresentation)
+    }
+
+    /// AC-41/INV-07/D-09: the hosted collection name field cannot be edited during a pending save,
+    /// then becomes editable again after the repository reports failure without dropping the draft.
+    func testCollectionEditorFieldLocksDuringSaveAndUnlocksAfterFailure() async throws {
+        let original = Collection(
+            id: UUID(), name: OwnershipTestValue.editorOriginalName, isDefault: false,
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 2), revision: 1
+        )
+        let repository = SuspendedCollectionUpdateRepository()
+        let model = CollectionEditorViewModel(
+            useCases: CollectionUseCases(repository: repository), target: .edit(original)
+        )
+        model.name = OwnershipTestValue.editorDraftName
+        let appeared = expectation(description: OwnershipTestValue.editorAppeared)
+        let saving = expectation(description: OwnershipTestValue.editorSavingRendered)
+        let failed = expectation(description: OwnershipTestValue.editorFailureRendered)
+        let host = UIHostingController(rootView: EditorSavingHarness(
+            model: model,
+            appeared: { appeared.fulfill() },
+            saving: { saving.fulfill() },
+            failed: { failed.fulfill() }
+        ))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousKeyWindow = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousKeyWindow?.makeKey()
+        }
+        await fulfillment(of: [appeared], timeout: 5)
+        let save = Task { await model.save(now: Date(timeIntervalSince1970: 3)) }
+        await repository.started.wait()
+        await fulfillment(of: [saving], timeout: 5)
+        let nameField = try XCTUnwrap(descendantTextFields(in: host.view).first)
+        let disabled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: OwnershipTestValue.disabledTextFieldPredicate), object: nameField
+        )
+        await fulfillment(of: [disabled], timeout: 5)
+        XCTAssertFalse(nameField.isEnabled)
+        XCTAssertEqual(model.name, OwnershipTestValue.editorDraftName)
+
+        await repository.release.open()
+        let saved = await save.value
+        XCTAssertFalse(saved)
+        await fulfillment(of: [failed], timeout: 5)
+        let enabled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: OwnershipTestValue.enabledTextFieldPredicate), object: nameField
+        )
+        await fulfillment(of: [enabled], timeout: 5)
+        XCTAssertTrue(nameField.isEnabled)
+        XCTAssertEqual(model.name, OwnershipTestValue.editorDraftName)
+    }
+
     private func descendantScrollViews(in view: UIView) -> [UIScrollView] {
         (view as? UIScrollView).map { [$0] } ?? view.subviews.flatMap { descendantScrollViews(in: $0) }
+    }
+
+    private func descendantTextFields(in view: UIView) -> [UITextField] {
+        (view as? UITextField).map { [$0] } ?? view.subviews.flatMap { descendantTextFields(in: $0) }
     }
 
     func testFeatureModelsSurviveParentReconstruction() async throws {
@@ -284,6 +383,24 @@ private final class ModelProbe {
     func record(_ model: AnyObject) {
         if constructions == 0 { first = model }
         constructions += 1
+    }
+}
+
+@MainActor
+private struct EditorSavingHarness: View {
+    let model: CollectionEditorViewModel
+    let appeared: () -> Void
+    let saving: () -> Void
+    let failed: () -> Void
+
+    var body: some View {
+        let isSaving = model.isSaving
+        NavigationStack { CollectionEditorView(viewModel: model) }
+            .onAppear(perform: appeared)
+            .onChange(of: isSaving) { _, value in
+                if value { saving() }
+                else { failed() }
+            }
     }
 }
 

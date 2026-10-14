@@ -431,6 +431,8 @@ struct MapPlaceSearchTests {
         service.complete(position)
         #expect(await recenter.value == nil)
         #expect(model.selectedCandidate == candidate)
+        #expect(model.visiblePlace?.id == .searchCandidate(candidate.id))
+        #expect(model.visiblePlace?.coordinate == candidate.coordinate)
         #expect(model.cameraPosition.region?.center.latitude == candidate.coordinate.latitude)
         #expect(model.cameraPosition.region?.center.longitude == candidate.coordinate.longitude)
         #expect(model.locationFocus == selectedFocus)
@@ -782,5 +784,79 @@ struct MapPlaceSearchTests {
         #expect(first.homeRouter.paths == homePaths)
         #expect(first.selectedTab == .home)
         #expect(second.homeRouter.paths.isEmpty)
+    }
+
+    /// AC-18/24/57-60, D-04, INV-09: the one scene-owned sheet slot is empty
+    /// during a detail-to-Search transition and advances only on dismissal ack.
+    @Test func searchFromDetailWaitsForDismissalAcknowledgement() {
+        let scene = SceneCoordinator()
+        scene.selectedTab = .map
+        scene.openMapDetail()
+        #expect(scene.presentedMapSheet == .detail)
+
+        scene.openMapSearch()
+        scene.openMapSearch()
+        #expect(scene.presentedMapSheet == nil)
+        #expect(scene.mapPresentation == .none)
+        scene.mapPresentationDidDismiss()
+        #expect(scene.presentedMapSheet == .search)
+        scene.mapPresentationDidDismiss()
+        #expect(scene.presentedMapSheet == .search)
+    }
+
+    /// AC-18/24/58, D-04: cancelling a queued Search leaves the selected card
+    /// and camera intact and cannot reopen a sheet after a late dismissal ack.
+    @Test func cancellingQueuedSearchPreservesCandidateSelection() throws {
+        let scene = SceneCoordinator()
+        scene.selectedTab = .map
+        let model = MapViewModel(router: scene.mapRouter,
+                                 deviceLocationService: SearchTestLocationService())
+        let candidate = try SearchFixture.candidate(id: UUID())
+        model.selectSearchCandidate(candidate)
+        model.showDetails()
+        let camera = model.cameraPosition.region
+        scene.openMapDetail()
+        scene.openMapSearch()
+        #expect(scene.presentedMapSheet == nil)
+        scene.closeMapSearch()
+        scene.mapPresentationDidDismiss()
+        scene.mapPresentationDidDismiss()
+
+        #expect(scene.presentedMapSheet == nil)
+        #expect(model.selectedCandidate == candidate)
+        #expect(model.visiblePlace?.id == .searchCandidate(candidate.id))
+        #expect(model.selectedDetail?.id == .searchCandidate(candidate.id))
+        #expect(model.cameraPosition.region?.center.latitude == camera?.center.latitude)
+        #expect(model.cameraPosition.region?.center.longitude == camera?.center.longitude)
+    }
+
+    /// AC-18/19/24, D-04: a resolved Search candidate replaces the prior
+    /// detail selection, and repeated close/ack cannot resurrect Search.
+    @Test func successfulCandidateReplacementClosesOneSearchSheet() throws {
+        let scene = SceneCoordinator()
+        scene.selectedTab = .map
+        let model = MapViewModel(router: scene.mapRouter,
+                                 deviceLocationService: SearchTestLocationService())
+        let previous = try SearchFixture.candidate(id: UUID())
+        model.selectSearchCandidate(previous)
+        model.showDetails()
+        scene.openMapDetail()
+        scene.openMapSearch()
+        scene.mapPresentationDidDismiss()
+        #expect(scene.presentedMapSheet == .search)
+
+        let replacement = try SearchFixture.candidate(id: UUID())
+        model.selectSearchCandidate(replacement)
+        scene.closeMapSearch()
+        scene.closeMapSearch()
+        scene.mapPresentationDidDismiss()
+        scene.mapPresentationDidDismiss()
+
+        #expect(scene.presentedMapSheet == nil)
+        #expect(model.selectedDetail == nil)
+        #expect(model.selectedCandidate?.id == replacement.id)
+        #expect(model.visiblePlace?.id == .searchCandidate(replacement.id))
+        #expect(model.cameraPosition.region?.center.latitude == replacement.coordinate.latitude)
+        #expect(model.cameraPosition.region?.center.longitude == replacement.coordinate.longitude)
     }
 }

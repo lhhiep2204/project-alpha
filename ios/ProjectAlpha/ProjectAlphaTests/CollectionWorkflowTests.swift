@@ -41,7 +41,7 @@ private enum CollectionTestValue {
 private enum CollectionTestFailure: Error { case injectedSave }
 
 /// A deterministic scheduling gate; cancellation does not release it implicitly.
-private actor CollectionObservationGate {
+actor CollectionObservationGate {
     private var isOpen = false
     private var waiter: CheckedContinuation<Void, Never>?
 
@@ -153,6 +153,46 @@ private actor CollectionCommandSpy: CollectionRepository {
                                       deletedLocationCount: command.expectedLocationCount,
                                       libraryRevision: 3)
     }
+}
+
+/// Suspends an update at the repository boundary so editor state is observable without timing guesses.
+actor SuspendedCollectionUpdateRepository: CollectionRepository {
+    let started = CollectionObservationGate()
+    let release = CollectionObservationGate()
+    private var shouldFail = true
+    private var commands: [UpdateCollectionCommand] = []
+
+    func bootstrap(_ command: BootstrapCollectionCommand) async throws -> CollectionListSnapshot {
+        throw CollectionTestFailure.injectedSave
+    }
+    func snapshot() async throws -> CollectionListSnapshot { throw CollectionTestFailure.injectedSave }
+    func collection(id: UUID) async throws -> CollectionSummary? { throw CollectionTestFailure.injectedSave }
+    func observeSnapshots() async -> AsyncThrowingStream<CollectionListSnapshot, any Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+    func create(_ command: CreateCollectionCommand) async throws -> CollectionCommit {
+        throw CollectionTestFailure.injectedSave
+    }
+    func update(_ command: UpdateCollectionCommand) async throws -> CollectionCommit {
+        commands.append(command)
+        await started.open()
+        await release.wait()
+        if shouldFail { throw CollectionTestFailure.injectedSave }
+        let collection = Collection(
+            id: command.id,
+            name: command.name,
+            isDefault: false,
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: command.updatedAt,
+            revision: command.expectedRevision + 1
+        )
+        return CollectionCommit(collection: collection, libraryRevision: 2)
+    }
+    func delete(_ command: DeleteCollectionCommand) async throws -> DeleteCollectionCommit {
+        throw CollectionTestFailure.injectedSave
+    }
+    func allowSuccess() { shouldFail = false }
+    func submittedCommands() -> [UpdateCollectionCommand] { commands }
 }
 
 /// D-01, AC-02/41, INV-01/04/05/07: use cases validate drafts and preserve commit expectations.
@@ -1059,6 +1099,79 @@ struct CollectionPresentationTests {
         #expect(model.collection?.collection == collection)
         #expect(model.displayTitle(hint: nil) == CollectionTestValue.tripName)
         #expect(router.paths == [.collection(id: id)])
+    }
+
+    /// AC-41/INV-07/D-09: a pending edit remains in flight until persistence resolves;
+    /// failure retains the draft, and a later retry can commit the same collection ID.
+    @Test func editorSaveKeepsPendingStateAndRetainsDraftAfterFailure() async throws {
+        let original = Collection(
+            id: UUID(), name: CollectionTestValue.tripName, isDefault: false,
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 2), revision: 1
+        )
+        let repository = SuspendedCollectionUpdateRepository()
+        let model = CollectionEditorViewModel(
+            useCases: CollectionUseCases(repository: repository), target: .edit(original)
+        )
+        model.name = CollectionTestValue.localDraftName
+
+        let firstSave = Task { await model.save(now: Date(timeIntervalSince1970: 3)) }
+        await repository.started.wait()
+        #expect(model.isSaving)
+        #expect(model.isDirty)
+        #expect(model.name == CollectionTestValue.localDraftName)
+
+        await repository.release.open()
+        #expect(await firstSave.value == false)
+        #expect(!model.isSaving)
+        #expect(model.saveError == .failed)
+        #expect(model.name == CollectionTestValue.localDraftName)
+        model.name = CollectionTestValue.competingName
+        #expect(model.name == CollectionTestValue.competingName)
+        model.name = CollectionTestValue.localDraftName
+
+        await repository.allowSuccess()
+        #expect(await model.save(now: Date(timeIntervalSince1970: 4)))
+        #expect(!model.isSaving)
+        #expect(model.saveError == nil)
+        let commands = await repository.submittedCommands()
+        #expect(commands.count == 2)
+        #expect(commands.allSatisfy { $0.id == original.id && $0.name == CollectionTestValue.localDraftName })
+    }
+
+    /// AC-41/INV-07/D-09: an edit arriving after the save command is captured cannot become
+    /// a newer draft that is silently lost when the editor dismisses after successful persistence.
+    @Test func editorRejectsNameMutationWhileSuccessfulSaveIsPending() async {
+        let original = Collection(
+            id: UUID(), name: CollectionTestValue.tripName, isDefault: false,
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 2), revision: 1
+        )
+        let repository = SuspendedCollectionUpdateRepository()
+        await repository.allowSuccess()
+        let model = CollectionEditorViewModel(
+            useCases: CollectionUseCases(repository: repository), target: .edit(original)
+        )
+        model.name = CollectionTestValue.localDraftName
+
+        let save = Task { await model.save(now: Date(timeIntervalSince1970: 3)) }
+        await repository.started.wait()
+        #expect(model.isSaving)
+        let captured = await repository.submittedCommands()
+        #expect(captured.count == 1)
+        #expect(captured.first?.name == CollectionTestValue.localDraftName)
+
+        model.name = CollectionTestValue.competingName
+        #expect(model.name == CollectionTestValue.localDraftName)
+        await repository.release.open()
+        #expect(await save.value)
+        #expect(!model.isSaving)
+        #expect(model.name == CollectionTestValue.localDraftName)
+        let persisted = await repository.submittedCommands()
+        #expect(persisted.count == 1)
+        #expect(persisted.first?.id == original.id)
+        #expect(persisted.first?.expectedRevision == original.revision)
+        #expect(persisted.first?.name == model.name)
     }
 
     @Test func editorConflictRetainsDraftAndCanReapplyAgainstLatestRevision() async throws {

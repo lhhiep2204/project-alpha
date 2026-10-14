@@ -108,7 +108,49 @@ struct MapKitMapsDriver: AppleMapsDriver {
 
 @MainActor
 enum AppleMapItemMapper {
-    private enum Text { static let missingName = "" }
+    private enum Text {
+        static let missingName = ""
+        nonisolated static let englishLocaleIdentifier = "en"
+    }
+
+    /// A POI category identifies a place. Structured address names identify a
+    /// city or country only when the resolved feature itself has that name.
+    /// An address *within* a city must not make every building a city.
+    nonisolated static func geographicKind(
+        name: String,
+        hasPointOfInterestCategory: Bool,
+        cityName: String?,
+        regionName: String?,
+        regionCode: String? = nil,
+        displayLocaleIdentifier: String = Text.englishLocaleIdentifier
+    ) -> PlaceGeographicKind {
+        if hasPointOfInterestCategory { return .point }
+        let resolvedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !resolvedName.isEmpty else { return .unknown }
+        func matches(_ structuredName: String?) -> Bool {
+            guard let structuredName else { return false }
+            let trimmedName = structuredName.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !trimmedName.isEmpty && resolvedName.compare(
+                trimmedName, options: [.caseInsensitive, .diacriticInsensitive]
+            ) == .orderedSame
+        }
+        let matchesCity = matches(cityName)
+        let matchesRegion = matches(regionName)
+        // A city and country can share a name. A code disambiguates them only
+        // when it is a real ISO country code whose localized name also matches.
+        if matchesCity && matchesRegion {
+            guard let regionCode else { return .unknown }
+            let region = Locale.Region(regionCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased())
+            guard region.isISORegion, region.identifier.count == 2,
+                  Locale.Region.isoRegions.contains(region) else { return .unknown }
+            let localizedNames = [displayLocaleIdentifier, Text.englishLocaleIdentifier]
+                .compactMap { Locale(identifier: $0).localizedString(forRegionCode: region.identifier) }
+            return localizedNames.contains(where: matches) ? .region : .unknown
+        }
+        if matchesCity { return .city }
+        if matchesRegion { return .region }
+        return .unknown
+    }
 
     /// SDK aliases are nonexhaustive; preserve all known opaque IDs without interpreting them.
     nonisolated static func resolvedIdentity(
@@ -131,7 +173,15 @@ enum AppleMapItemMapper {
         return PlaceCandidate(
             id: id, source: .appleMaps, placeIdentity: identity,
             name: item.name ?? Text.missingName, address: item.address?.fullAddress,
-            category: item.pointOfInterestCategory?.rawValue, coordinate: coordinate
+            category: item.pointOfInterestCategory?.rawValue, coordinate: coordinate,
+            geographicKind: geographicKind(
+                name: item.name ?? Text.missingName,
+                hasPointOfInterestCategory: item.pointOfInterestCategory != nil,
+                cityName: item.addressRepresentations?.cityName,
+                regionName: item.addressRepresentations?.regionName,
+                regionCode: item.addressRepresentations?.region?.identifier,
+                displayLocaleIdentifier: Locale.current.identifier
+            )
         )
     }
 }

@@ -31,4 +31,11 @@ enum MapKeys: String, CaseIterable, LocalizedKey {
     case placeSearchRateLimited = "Too many search requests. Please wait a moment and try again."
     case placeResolutionFailed = "This place could not be opened. Please try again."
     case addressUnavailable = "Address unavailable"
+    case myLocation = "My Location"
+    case viewDetails = "View Details"
+    case coordinates = "Coordinates"
+    case horizontalAccuracy = "Horizontal Accuracy"
+    case positionTimestamp = "Position Time"
+    case name = "Name"
+    case address = "Address"
 }

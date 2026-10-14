@@ -5,6 +5,7 @@
 //  Created by Hoàng Hiệp Lê on 13/9/26.
 //
 
+import CoreLocation
 import MapKit
 import SwiftUI
 import UIKit
@@ -17,7 +18,13 @@ struct MapView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openURL) private var openURL
     @Environment(\.locale) private var locale
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var viewModel: MapViewModel
+    @State private var referenceCardMeasurement: MapCardReferenceMeasurement?
+    @State private var pendingReferenceCardMeasurement: MapCardReferenceMeasurement?
+    @State private var currentCardMeasurementKey: MapCardReferenceMeasurementKey?
+    @Namespace private var mapScope
     private let rendersLiveMap: Bool
 
     init(viewModel: MapViewModel, rendersLiveMap: Bool = true) {
@@ -37,12 +44,15 @@ struct MapView: View {
         MapSearchTaskID(active: isSearchActive, presentationGeneration: viewModel.placeSearchGeneration)
     }
 
-    private var searchPresented: Binding<Bool> {
+    private var mapSheet: Binding<MapPresentation?> {
         Binding(
-            get: { coordinator.mapPresentation == .search && coordinator.selectedTab == .map },
-            set: { presented in
-                if !presented, coordinator.selectedTab == .map {
-                    closeSearch()
+            get: { coordinator.selectedTab == .map ? coordinator.presentedMapSheet : nil },
+            set: { presentation in
+                guard presentation == nil, coordinator.selectedTab == .map else { return }
+                switch coordinator.mapPresentation {
+                case .search: closeSearch()
+                case .detail: closeDetails()
+                case .none: break
                 }
             }
         )
@@ -52,13 +62,7 @@ struct MapView: View {
         @Bindable var model = viewModel
         let searchTaskID = self.searchTaskID
 
-        mapCanvas
-            .overlay(alignment: .bottomTrailing) {
-                MapCurrentLocationButton(isLocating: viewModel.isLocating) {
-                    viewModel.requestRecenter()
-                }
-                .padding(MapLayoutMetrics.controlPadding)
-            }
+        mapSurface
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: openSearch) {
@@ -67,10 +71,26 @@ struct MapView: View {
                     .accessibilityIdentifier(MapAccessibility.searchButton)
                     .keyboardShortcut(KeyEquivalent(MapKeyboardShortcuts.search), modifiers: .command)
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    MapCurrentLocationButton(isLocating: viewModel.isLocating) {
+                        viewModel.requestRecenter()
+                    }
+                }
             }
-            .sheet(isPresented: searchPresented, onDismiss: searchDidDismiss) {
-                if let search = viewModel.placeSearch {
-                    MapPlaceSearchView(model: search, onClose: closeSearch)
+            .sheet(item: mapSheet, onDismiss: mapSheetDidDismiss) { presentation in
+                switch presentation {
+                case .search:
+                    if let search = viewModel.placeSearch {
+                        MapPlaceSearchView(model: search, onClose: closeSearch)
+                    }
+                case .detail:
+                    if let place = viewModel.selectedDetail {
+                        MapReadOnlyDetailSheet(place: place) {
+                            openInAppleMaps(place)
+                        }
+                    }
+                case .none:
+                    EmptyView()
                 }
             }
             .task(id: searchTaskID) {
@@ -89,10 +109,12 @@ struct MapView: View {
                 switch presentation {
                 case .search: _ = viewModel.openPlaceSearch()
                 case .none: viewModel.dismissPlaceSearch()
+                case .detail: break
                 }
             }
-            .onChange(of: locale.identifier) { _, identifier in
+            .onChange(of: locale.identifier, initial: true) { _, identifier in
                 viewModel.placeSearch?.updateLocale(identifier)
+                viewModel.updateAddressLocale(identifier)
             }
             .onChange(of: viewModel.placeSearch?.resolvedCandidate) { _, candidate in
                 guard isSearchActive, let candidate else { return }
@@ -125,6 +147,11 @@ struct MapView: View {
                     viewModel.focusCamera(on: focus)
                 }
             }
+            .onChange(of: viewModel.selectedDetail) { _, detail in
+                if detail == nil, coordinator.mapPresentation == .detail {
+                    closeDetails()
+                }
+            }
             .alert(Text(MapKeys.locationPermissionTitle), isPresented: $model.permissionAlertPresented) {
                 Button(action: openSettings) {
                     Text(CommonKeys.settings)
@@ -137,9 +164,95 @@ struct MapView: View {
             }
     }
 
+    private var mapSurface: some View {
+        GeometryReader { geometry in
+            let initialLayout = MapCardLayout(
+                size: geometry.size,
+                regularWidth: horizontalSizeClass == .regular,
+                leadingIsPhysicalLeft: layoutDirection == .leftToRight
+            )
+            let measurementKey = MapCardReferenceMeasurementKey(
+                cardWidth: initialLayout.cardWidth,
+                localeIdentifier: locale.identifier
+            )
+            let layout = initialLayout.withReferenceCardHeight(
+                referenceCardMeasurement?.key == measurementKey
+                    ? referenceCardMeasurement?.height
+                    : nil
+            )
+
+            mapCanvas(
+                compassAtTrailing: layout.cardAtLeading,
+                showsCompass: viewModel.visiblePlace == nil || !layout.omitsCompassForCard
+            )
+                .overlay(alignment: layout.cardAtLeading ? .bottomLeading : .bottom) {
+                    if let place = viewModel.visiblePlace {
+                        MapQuickPlaceCard(
+                            place: place,
+                            width: layout.cardWidth,
+                            height: layout.cardHeight,
+                            onClose: { viewModel.dismissSearchCandidate() },
+                            onOpenInMaps: { openInAppleMaps(place) },
+                            onViewDetails: openDetails,
+                            onReferenceHeightChange: { height in
+                                recordReferenceCardHeight(height, for: measurementKey)
+                            }
+                        )
+                        .frame(width: layout.cardWidth)
+                        .padding(.horizontal, MapCardLayout.edgePadding)
+                        .padding(.bottom, layout.cardBottomInset)
+                    }
+                }
+                .onAppear {
+                    activateCardMeasurementKey(measurementKey)
+                    updateFocusViewport(layout)
+                }
+                .onChange(of: measurementKey) { _, newKey in
+                    activateCardMeasurementKey(newKey)
+                }
+                .onChange(of: layout) { _, newLayout in updateFocusViewport(newLayout) }
+        }
+    }
+
+    private func updateFocusViewport(_ layout: MapCardLayout) {
+        viewModel.setFocusViewport(
+            width: layout.size.width,
+            height: layout.size.height,
+            cardWidth: layout.cardWidth + 2 * MapCardLayout.edgePadding,
+            cardHeight: layout.cardHeight + layout.cardBottomInset,
+            cardAtLeading: layout.cardAtLeading,
+            leadingIsPhysicalLeft: layout.leadingIsPhysicalLeft
+        )
+    }
+
+    private func recordReferenceCardHeight(
+        _ height: CGFloat,
+        for key: MapCardReferenceMeasurementKey
+    ) {
+        guard height.isFinite, height > 0 else { return }
+        let measurement = MapCardReferenceMeasurement(key: key, height: height)
+        if currentCardMeasurementKey == nil || currentCardMeasurementKey == key {
+            if referenceCardMeasurement != measurement {
+                referenceCardMeasurement = measurement
+            }
+        } else if pendingReferenceCardMeasurement != measurement {
+            pendingReferenceCardMeasurement = measurement
+        }
+    }
+
+    private func activateCardMeasurementKey(_ key: MapCardReferenceMeasurementKey) {
+        currentCardMeasurementKey = key
+        if pendingReferenceCardMeasurement?.key == key {
+            referenceCardMeasurement = pendingReferenceCardMeasurement
+        }
+        pendingReferenceCardMeasurement = nil
+    }
+
     private func openSearch() {
-        viewModel.openPlaceSearch()
         coordinator.openMapSearch()
+        if coordinator.mapPresentation == .search {
+            viewModel.openPlaceSearch()
+        }
     }
 
     private func closeSearch() {
@@ -147,41 +260,69 @@ struct MapView: View {
         coordinator.closeMapSearch()
     }
 
-    private func searchDidDismiss() {
-        // A tab/background pause can remove rendering while the scene still owns Search.
-        if coordinator.mapPresentation == .none { viewModel.dismissPlaceSearch() }
+    private func openDetails() {
+        viewModel.showDetails()
+        guard viewModel.selectedDetail != nil else { return }
+        coordinator.openMapDetail()
+    }
+
+    private func closeDetails() {
+        coordinator.closeMapDetail()
+    }
+
+    private func mapSheetDidDismiss() {
+        coordinator.mapPresentationDidDismiss()
+        // A queued sheet now owns its content; a tab/background pause can also
+        // remove rendering while the scene still owns the current presentation.
+        if coordinator.mapPresentation == .none {
+            viewModel.dismissPlaceSearch()
+            viewModel.selectedDetail = nil
+        }
+    }
+
+    private func openInAppleMaps(_ place: MapQuickPlace) {
+        let location = CLLocation(latitude: place.coordinate.latitude, longitude: place.coordinate.longitude)
+        let item = MKMapItem(location: location, address: nil)
+        item.name = place.name ?? LocalizationManager.localizedString(MapKeys.myLocation, locale: locale)
+        item.openInMaps(launchOptions: nil)
     }
 
     @ViewBuilder
-    private var mapCanvas: some View {
+    private func mapCanvas(compassAtTrailing: Bool, showsCompass: Bool) -> some View {
         @Bindable var model = viewModel
         if rendersLiveMap {
-            GeometryReader { geometry in
-                Map(position: $model.cameraPosition) {
-                    if isMapActive && viewModel.showsUserLocation {
-                        UserAnnotation()
-                    }
-                    if let candidate = viewModel.selectedCandidate {
-                        Annotation(candidate.name, coordinate: CLLocationCoordinate2D(
-                            latitude: candidate.coordinate.latitude,
-                            longitude: candidate.coordinate.longitude
-                        )) {
-                            MapSearchCandidatePin(
-                                candidate: candidate,
-                                maximumWidth: geometry.size.width * MapLayoutMetrics.candidateWidthFraction
-                            )
-                        }
-                        .tag(candidate.id)
-                    }
+            Map(position: $model.cameraPosition, scope: mapScope) {
+                if isMapActive && viewModel.showsUserLocation {
+                    UserAnnotation()
                 }
-                .mapStyle(preferences.mapType.mapStyle)
-                .mapControls { MapCompass() }
-                .onMapCameraChange(frequency: .onEnd) { context in
-                    viewModel.recordVisibleRegion(context.region)
-                    if viewModel.cameraPosition.positionedByUser {
-                        viewModel.userDidChangeCamera()
+                if let candidate = viewModel.selectedCandidate {
+                    Annotation(MapAnnotationTitle.hidden, coordinate: CLLocationCoordinate2D(
+                        latitude: candidate.coordinate.latitude,
+                        longitude: candidate.coordinate.longitude
+                    )) {
+                        MapSearchCandidatePin(candidate: candidate)
                     }
+                    .tag(candidate.id)
                 }
+            }
+            .mapStyle(preferences.mapType.mapStyle)
+            .overlay(alignment: compassAtTrailing ? .topTrailing : .topLeading) {
+                if showsCompass {
+                    MapCompass(scope: mapScope)
+                        .padding(.top, MapCardLayout.edgePadding)
+                        .padding(compassAtTrailing ? .trailing : .leading, MapCardLayout.edgePadding)
+                }
+            }
+            .mapScope(mapScope)
+            .onMapCameraChange(frequency: .continuous) {
+                // Invalidate a pending location focus during pan/zoom, before the
+                // gesture ends. Keep region/search propagation on the end callback.
+                if viewModel.cameraPosition.positionedByUser {
+                    viewModel.userDidChangeCamera()
+                }
+            }
+            .onMapCameraChange(frequency: .onEnd) { context in
+                viewModel.recordVisibleRegion(context.region)
             }
         } else {
             MapPreviewCanvas()
@@ -215,44 +356,6 @@ struct MapView: View {
     }
 }
 
-private struct MapCurrentLocationButton: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    let isLocating: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label {
-                Text(MapKeys.currentLocation)
-            } icon: {
-                Image(systemName: MapSymbols.currentLocation)
-                    .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
-            }
-            .labelStyle(.iconOnly)
-            .opacity(isLocating ? 0 : 1)
-            .overlay {
-                if isLocating {
-                    ProgressView()
-                }
-            }
-            .frame(width: MapLayoutMetrics.controlSize, height: MapLayoutMetrics.controlSize)
-            .contentShape(.circle)
-        }
-        .buttonStyle(.plain)
-        .background(
-            reduceTransparency ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
-            in: Circle()
-        )
-        .glassEffect(reduceTransparency ? .identity : .regular.interactive(), in: Circle())
-        .disabled(isLocating)
-        .accessibilityLabel(Text(isLocating ? MapKeys.locating : MapKeys.currentLocation))
-        .accessibilityIdentifier(MapAccessibility.currentLocationButton)
-        .help(Text(MapKeys.currentLocation))
-        .keyboardShortcut(KeyEquivalent(MapKeyboardShortcuts.currentLocation), modifiers: [.command, .shift])
-    }
-}
-
 private struct MapLocationTaskID: Equatable {
     let active: Bool
     let recenterID: Int
@@ -261,6 +364,16 @@ private struct MapLocationTaskID: Equatable {
 private struct MapSearchTaskID: Equatable {
     let active: Bool
     let presentationGeneration: UInt64
+}
+
+private struct MapCardReferenceMeasurementKey: Equatable {
+    let cardWidth: CGFloat
+    let localeIdentifier: String
+}
+
+private struct MapCardReferenceMeasurement: Equatable {
+    let key: MapCardReferenceMeasurementKey
+    let height: CGFloat
 }
 
 private extension MapLocationIssue {
@@ -274,24 +387,16 @@ private extension MapLocationIssue {
     }
 }
 
-private enum MapSymbols {
-    static let currentLocation = "location.fill"
+private enum MapAnnotationTitle {
+    static let hidden = ""
 }
 
 private enum MapAccessibility {
-    static let currentLocationButton = "map.currentLocation"
     static let searchButton = "map.search"
 }
 
 private enum MapKeyboardShortcuts {
-    static let currentLocation: Character = "l"
     static let search: Character = "f"
-}
-
-private enum MapLayoutMetrics {
-    static let controlSize: CGFloat = 44
-    static let controlPadding: CGFloat = 12
-    static let candidateWidthFraction = 0.7
 }
 
 #Preview {
@@ -301,21 +406,4 @@ private enum MapLayoutMetrics {
     .environment(MapPreviewFixtures.coordinator())
     .environment(AppPreferences(store: PreviewPreferenceStore()))
     .environment(DSToastManager())
-}
-
-#Preview {
-    MapCurrentLocationButton(isLocating: false) {}
-        .padding()
-        .preferredColorScheme(.light)
-}
-
-#Preview {
-    MapCurrentLocationButton(isLocating: false) {}
-        .padding()
-        .preferredColorScheme(.dark)
-}
-
-#Preview {
-    MapCurrentLocationButton(isLocating: true) {}
-        .padding()
 }

@@ -25,6 +25,16 @@ private enum MapsFixture {
     static let newPrimary = "New:Primary"
     static let newAlias = "New:Alias"
     static let time = Date(timeIntervalSinceReferenceDate: 1_000)
+    static let cityName = "Ho Chi Minh City"
+    static let cityVariant = "  ho chi minh city  "
+    static let regionName = "Việt Nam"
+    static let regionVariant = "viet nam"
+    static let dualCityRegionName = "Vietnam"
+    static let franceName = "France"
+    static let vietnamRegionCode = "VN"
+    static let franceRegionCode = "FR"
+    static let invalidRegionCode = "ZZ"
+    static let ambiguousBusiness = "City Market"
     static func coordinate(_ latitude: Double = 10) throws -> Coordinate {
         try Coordinate(latitude: latitude, longitude: 20)
     }
@@ -139,6 +149,87 @@ private final class CompositionLocationService: DeviceLocationService {
 
 @MainActor
 struct AppleMapsServiceTests {
+    /// AC-67, U-32, D-21: only structured provider metadata gives a selected
+    /// feature a broad geographic kind; a nearby city's name is not its kind.
+    @Test func structuredMetadataClassifiesSelectedFeatureWithoutNameHeuristics() {
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.ambiguousBusiness, hasPointOfInterestCategory: true,
+            cityName: MapsFixture.cityName, regionName: MapsFixture.regionName
+        ) == .point)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.cityVariant, hasPointOfInterestCategory: false,
+            cityName: MapsFixture.cityName, regionName: MapsFixture.regionName
+        ) == .city)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.regionVariant, hasPointOfInterestCategory: false,
+            cityName: MapsFixture.cityName, regionName: MapsFixture.regionName
+        ) == .region)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.ambiguousBusiness, hasPointOfInterestCategory: false,
+            cityName: MapsFixture.cityName, regionName: MapsFixture.regionName
+        ) == .unknown)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.cityName, hasPointOfInterestCategory: false,
+            cityName: nil, regionName: nil
+        ) == .unknown)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.cityName, hasPointOfInterestCategory: false,
+            cityName: MapsFixture.cityName, regionName: MapsFixture.cityName
+        ) == .unknown)
+    }
+
+    /// AC-67, U-32, D-21: some live provider addresses repeat the country
+    /// name in both city and region fields; only a matching country code resolves it.
+    @Test func dualCityRegionNameUsesCorroboratingRegionCode() {
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.dualCityRegionName, hasPointOfInterestCategory: false,
+            cityName: MapsFixture.dualCityRegionName,
+            regionName: MapsFixture.dualCityRegionName,
+            regionCode: MapsFixture.vietnamRegionCode,
+            displayLocaleIdentifier: MapsFixture.otherLocale
+        ) == .region)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.dualCityRegionName, hasPointOfInterestCategory: false,
+            cityName: MapsFixture.dualCityRegionName,
+            regionName: MapsFixture.dualCityRegionName,
+            regionCode: nil,
+            displayLocaleIdentifier: MapsFixture.otherLocale
+        ) == .unknown)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.dualCityRegionName, hasPointOfInterestCategory: false,
+            cityName: MapsFixture.dualCityRegionName,
+            regionName: MapsFixture.dualCityRegionName,
+            regionCode: MapsFixture.franceRegionCode,
+            displayLocaleIdentifier: MapsFixture.otherLocale
+        ) == .unknown)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.dualCityRegionName, hasPointOfInterestCategory: false,
+            cityName: MapsFixture.dualCityRegionName,
+            regionName: MapsFixture.dualCityRegionName,
+            regionCode: MapsFixture.invalidRegionCode,
+            displayLocaleIdentifier: MapsFixture.otherLocale
+        ) == .unknown)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.franceName, hasPointOfInterestCategory: false,
+            cityName: MapsFixture.franceName, regionName: MapsFixture.franceName,
+            regionCode: MapsFixture.vietnamRegionCode,
+            displayLocaleIdentifier: MapsFixture.otherLocale
+        ) == .unknown)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.dualCityRegionName, hasPointOfInterestCategory: true,
+            cityName: MapsFixture.dualCityRegionName,
+            regionName: MapsFixture.dualCityRegionName,
+            regionCode: MapsFixture.invalidRegionCode,
+            displayLocaleIdentifier: MapsFixture.otherLocale
+        ) == .point)
+        #expect(AppleMapItemMapper.geographicKind(
+            name: MapsFixture.regionName, hasPointOfInterestCategory: false,
+            cityName: MapsFixture.regionName, regionName: MapsFixture.regionName,
+            regionCode: MapsFixture.vietnamRegionCode,
+            displayLocaleIdentifier: MapsFixture.locale
+        ) == .region)
+    }
+
     /// D-01/03, AC-19/37: composition retains one supplied broker while sessions stay destination-owned.
     @Test func appCompositionRetainsOverridesWithoutStartingServices() async {
         let location = CompositionLocationService()
