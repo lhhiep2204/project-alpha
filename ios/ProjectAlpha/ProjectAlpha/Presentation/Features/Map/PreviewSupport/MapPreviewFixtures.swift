@@ -13,7 +13,7 @@ import SwiftUI
 @MainActor
 enum MapPreviewFixtures {
     static func model() -> MapViewModel {
-        MapViewModel(router: .init(root: .root), deviceLocationService: MapPreviewLocationService())
+        MapViewModel(deviceLocationService: MapPreviewLocationService())
     }
 
     static func coordinator() -> SceneCoordinator {

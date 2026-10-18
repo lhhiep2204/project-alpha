@@ -85,9 +85,10 @@ struct MapView: View {
                     }
                 case .detail:
                     if let place = viewModel.selectedDetail {
-                        MapReadOnlyDetailSheet(place: place) {
-                            openInAppleMaps(place)
-                        }
+                        MapReadOnlyDetailSheet(
+                            place: place, onOpenInMaps: { openInAppleMaps(place) },
+                            route: viewModel.route, distanceUnit: preferences.distanceUnit
+                        )
                     }
                 case .none:
                     EmptyView()
@@ -148,9 +149,14 @@ struct MapView: View {
                 }
             }
             .onChange(of: viewModel.selectedDetail) { _, detail in
+                if detail == nil { viewModel.resumeNativeMapSelection() }
                 if detail == nil, coordinator.mapPresentation == .detail {
                     closeDetails()
                 }
+            }
+            .onChange(of: viewModel.mapFeatureResolutionFailureID) { _, _ in
+                guard isMapActive else { return }
+                showToast(.placeResolutionFailed)
             }
             .alert(Text(MapKeys.locationPermissionTitle), isPresented: $model.permissionAlertPresented) {
                 Button(action: openSettings) {
@@ -196,7 +202,9 @@ struct MapView: View {
                             onViewDetails: openDetails,
                             onReferenceHeightChange: { height in
                                 recordReferenceCardHeight(height, for: measurementKey)
-                            }
+                            },
+                            route: viewModel.route,
+                            distanceUnit: preferences.distanceUnit
                         )
                         .frame(width: layout.cardWidth)
                         .padding(.horizontal, MapCardLayout.edgePadding)
@@ -281,30 +289,38 @@ struct MapView: View {
     }
 
     private func openInAppleMaps(_ place: MapQuickPlace) {
-        let location = CLLocation(latitude: place.coordinate.latitude, longitude: place.coordinate.longitude)
-        let item = MKMapItem(location: location, address: nil)
-        item.name = place.name ?? LocalizationManager.localizedString(MapKeys.myLocation, locale: locale)
-        item.openInMaps(launchOptions: nil)
+        let fallbackName = LocalizationManager.localizedString(MapKeys.myLocation, locale: locale)
+        guard let url = MapAppleMapsURL.make(for: place, fallbackName: fallbackName) else { return }
+        openURL(url)
     }
 
     @ViewBuilder
     private func mapCanvas(compassAtTrailing: Bool, showsCompass: Bool) -> some View {
         @Bindable var model = viewModel
         if rendersLiveMap {
-            Map(position: $model.cameraPosition, scope: mapScope) {
+            Map(
+                position: $model.cameraPosition,
+                selection: Binding(
+                    get: { viewModel.mapSelection },
+                    set: { viewModel.updateMapSelection($0) }
+                ),
+                scope: mapScope
+            ) {
                 if isMapActive && viewModel.showsUserLocation {
                     UserAnnotation()
                 }
-                if let candidate = viewModel.selectedCandidate {
+                if let candidate = viewModel.candidateForCustomAnnotation {
                     Annotation(MapAnnotationTitle.hidden, coordinate: CLLocationCoordinate2D(
                         latitude: candidate.coordinate.latitude,
                         longitude: candidate.coordinate.longitude
                     )) {
                         MapSearchCandidatePin(candidate: candidate)
                     }
-                    .tag(candidate.id)
+                    .tag(MapSelection(candidate.id))
                 }
             }
+            .mapFeatureSelectionAccessory(nil)
+            .mapFeatureSelectionDisabled { _ in !isMapActive || coordinator.mapPresentation != .none }
             .mapStyle(preferences.mapType.mapStyle)
             .overlay(alignment: compassAtTrailing ? .topTrailing : .topLeading) {
                 if showsCompass {

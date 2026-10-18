@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// Receives composed destinations without depending on App's DI containers.
 struct MainTabView<Home: View, MapContent: View, Settings: View>: View {
@@ -16,16 +17,90 @@ struct MainTabView<Home: View, MapContent: View, Settings: View>: View {
 
     var body: some View {
         TabView(selection: $coordinator.selectedTab) {
-            Tab(MainTab.home.title, systemImage: MainTab.home.systemImage, value: MainTab.home) {
+            Tab(value: MainTab.home) {
                 HomeNavigationView(router: coordinator.homeRouter, destination: home)
+                    .background(TabBarIconAppearance())
+            } label: {
+                tabLabel(.home)
             }
-            Tab(MainTab.map.title, systemImage: MainTab.map.systemImage, value: MainTab.map) {
+            Tab(value: MainTab.map) {
                 RouterView(router: coordinator.mapRouter, destination: map)
+                    .background(TabBarIconAppearance())
+            } label: {
+                tabLabel(.map)
             }
-            Tab(MainTab.settings.title, systemImage: MainTab.settings.systemImage, value: MainTab.settings) {
+            Tab(value: MainTab.settings) {
                 RouterView(router: coordinator.settingsRouter, destination: settings)
+                    .background(TabBarIconAppearance())
+            } label: {
+                tabLabel(.settings)
             }
         }
+        .tabViewStyle(.sidebarAdaptable)
+        .tint(.primary)
+        .environment(\.symbolVariants, .none)
+    }
+
+    private func tabLabel(_ tab: MainTab) -> some View {
+        Label {
+            Text(tab.title)
+        } icon: {
+            Image(uiImage: TabBarIconImages.image(for: tab, selected: coordinator.selectedTab == tab))
+                .renderingMode(.template)
+        }
+    }
+}
+
+/// Raster templates preserve the chosen outline/fill shape when SwiftUI builds
+/// native tab items. Symbol-backed UIImages can be automatically filled on launch.
+@MainActor
+private enum TabBarIconImages {
+    private static let configuration = UIImage.SymbolConfiguration(pointSize: 23, weight: .regular)
+    private static let images: [MainTab: (normal: UIImage, selected: UIImage)] =
+        Dictionary(uniqueKeysWithValues: [MainTab.home, .map, .settings].map { tab in
+            (tab, (render(tab.systemImage), render(tab.selectedSystemImage)))
+        })
+
+    static func image(for tab: MainTab, selected: Bool) -> UIImage {
+        guard let images = images[tab] else { return UIImage() }
+        return selected ? images.selected : images.normal
+    }
+
+    private static func render(_ symbol: String) -> UIImage {
+        guard let image = UIImage(systemName: symbol, withConfiguration: configuration) else { return UIImage() }
+        return UIGraphicsImageRenderer(size: image.size).image { _ in
+            image.draw(at: .zero)
+        }.withRenderingMode(.alwaysTemplate)
+    }
+}
+
+/// SwiftUI has no tab-bar modifier for the unselected icon tint.
+/// Configure only this scene's native bar; dynamic label color follows its appearance.
+private struct TabBarIconAppearance: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> TabBarIconAppearanceController {
+        TabBarIconAppearanceController()
+    }
+
+    func updateUIViewController(_ controller: TabBarIconAppearanceController, context: Context) {
+        controller.updateIconColors()
+    }
+}
+
+private final class TabBarIconAppearanceController: UIViewController {
+    override func loadView() {
+        view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+    }
+
+    override func viewIsAppearing(_ animated: Bool) {
+        super.viewIsAppearing(animated)
+        updateIconColors()
+    }
+
+    func updateIconColors() {
+        guard let tabBar = tabBarController?.tabBar else { return }
+        tabBar.tintColor = .label
+        tabBar.unselectedItemTintColor = .label
     }
 }
 
@@ -68,6 +143,17 @@ private struct HomeNavigationView<Destination: View>: View {
     } settings: { _ in
         Text(MainTab.settings.title)
     }
+}
+
+#Preview {
+    MainTabView(coordinator: SceneCoordinator()) { _, _ in
+        Text(MainTab.home.title)
+    } map: { _ in
+        Text(MainTab.map.title)
+    } settings: { _ in
+        Text(MainTab.settings.title)
+    }
+    .preferredColorScheme(.dark)
 }
 
 #Preview {

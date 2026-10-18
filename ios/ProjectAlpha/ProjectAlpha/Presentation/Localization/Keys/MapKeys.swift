@@ -38,4 +38,13 @@ enum MapKeys: String, CaseIterable, LocalizedKey {
     case positionTimestamp = "Position Time"
     case name = "Name"
     case address = "Address"
+    case walking = "Walking"
+    case driving = "Driving"
+    case automaticRouteMode = "Automatic"
+    case routeMode = "Travel Mode"
+    case straightLineDistance = "Straight-line distance"
+    case routeCalculating = "Calculating route…"
+    case routeUnavailable = "Route unavailable"
+    case routeOriginUnavailable = "Current location unavailable"
+    case routeDistanceOnly = "Distance only"
 }

@@ -235,6 +235,49 @@ struct MapResponsiveLocationTests {
         #expect(await request.value == .toast(.timedOut))
     }
 
+    /// AC-37/INV-09: authorization preflight on return or explicit fresh reuse
+    /// does not flash acquisition feedback over an already usable card.
+    @Test(arguments: [false, true])
+    func delayedAuthorizationPreservesUsableCardWithoutSpinner(explicit: Bool) async throws {
+        let (model, service, cached) = try await seededModel(age: 0)
+        let camera = try #require(model.cameraPosition.region)
+        service.suspendsAuthorization = true
+        let request = Task { explicit ? await model.recenter() : await model.activate() }
+        await service.waitForAuthorization(2)
+        #expect(!model.isLocating)
+        #expect(model.visiblePlace?.id == .currentPosition)
+        #expect(model.currentPosition == cached)
+        assertCamera(model, matches: camera)
+        #expect(service.positionCalls == 1)
+        #expect(await model.recenter() == nil) // Preflight itself reserves the request.
+        #expect(service.authorizationCalls == 2)
+        service.completeAuthorization(2)
+        if explicit {
+            await service.waitForPositionRequest(2)
+            #expect(!model.isLocating)
+            service.complete(2, with: .success(try makePosition(latitude: 12)))
+        }
+        #expect(await request.value == nil)
+        #expect(service.positionCalls == (explicit ? 2 : 1))
+        #expect(!model.isLocating)
+    }
+
+    /// AC-37/INV-09: deactivation during preflight cancels its ownership; a late
+    /// authorization response cannot acquire location or replace a retained card.
+    @Test func deactivationDuringAuthorizationRejectsLatePreflight() async throws {
+        let (model, service, cached) = try await seededModel(age: 0)
+        service.suspendsAuthorization = true
+        let request = Task { await model.recenter() }
+        await service.waitForAuthorization(2)
+        model.deactivate()
+        service.completeAuthorization(2)
+        #expect(await request.value == nil)
+        #expect(service.positionCalls == 1)
+        #expect(model.currentPosition == cached)
+        #expect(!model.isLocating)
+        #expect(!model.showsUserLocation)
+    }
+
     private static let now = Date(timeIntervalSinceReferenceDate: 10_000)
     private static let candidateName = "Responsive Location Candidate"
     private static let userCamera = MKCoordinateRegion(
@@ -244,7 +287,7 @@ struct MapResponsiveLocationTests {
 
     private func makeModel(_ service: MapPresentationLocationService) -> MapViewModel {
         MapViewModel(
-            router: .init(root: .root), deviceLocationService: service,
+            deviceLocationService: service,
             positionClock: { Self.now }
         )
     }

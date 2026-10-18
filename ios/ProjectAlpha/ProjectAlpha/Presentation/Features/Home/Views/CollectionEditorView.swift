@@ -30,7 +30,10 @@ struct CollectionEditorView: View {
         Form {
             nameSection
         }
-        .navigationTitle(Text(viewModel.isCreating ? CollectionKeys.addCollection : CollectionKeys.updateCollection))
+        .navigationTitle(Text(verbatim: LocalizationManager.localizedString(
+            viewModel.isCreating ? CollectionKeys.addCollection : CollectionKeys.updateCollection,
+            locale: locale
+        )))
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button(CommonKeys.cancel) { cancel() }
@@ -69,7 +72,15 @@ struct CollectionEditorView: View {
             }
             Button(role: .cancel) {} label: { Text(CommonKeys.cancel) }
         } message: {
-            Text(CollectionKeys.conflictMessage)
+            if let latest = viewModel.latestConflict {
+                Text(verbatim: CollectionKeys.conflictComparisonMessage(
+                    draftName: viewModel.name,
+                    latestName: latest.name,
+                    locale: locale
+                ))
+            } else {
+                Text(CollectionKeys.conflictMessage)
+            }
         }
         .confirmationDialog(
             Text(CollectionKeys.discardChangesTitle),

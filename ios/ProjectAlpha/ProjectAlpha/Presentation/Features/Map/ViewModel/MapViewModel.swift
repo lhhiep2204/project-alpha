@@ -33,6 +33,11 @@ enum MapQuickPlaceID: Hashable {
     case searchCandidate(UUID)
 }
 
+enum MapCandidateSelectionSource: Equatable {
+    case search
+    case nativePOI
+}
+
 struct MapQuickPlace: Identifiable, Equatable {
     let id: MapQuickPlaceID
     let name: String?
@@ -40,6 +45,25 @@ struct MapQuickPlace: Identifiable, Equatable {
     let coordinate: Coordinate
     let horizontalAccuracyMetres: Double?
     let timestamp: Date?
+    let placeIdentity: PlaceIdentity?
+
+    init(
+        id: MapQuickPlaceID,
+        name: String?,
+        address: String?,
+        coordinate: Coordinate,
+        horizontalAccuracyMetres: Double?,
+        timestamp: Date?,
+        placeIdentity: PlaceIdentity? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.address = address
+        self.coordinate = coordinate
+        self.horizontalAccuracyMetres = horizontalAccuracyMetres
+        self.timestamp = timestamp
+        self.placeIdentity = placeIdentity
+    }
 
     var isCurrentPosition: Bool { id == .currentPosition }
 }
@@ -56,26 +80,35 @@ private struct MapFocusViewport: Equatable {
 @Observable
 @MainActor
 final class MapViewModel {
-    private let router: Router<MapRoute>
+    let route: MapRouteModel
     private let deviceLocationService: any DeviceLocationService
     private let placeSearchService: (any PlaceSearchService)?
     private let reverseGeocodingService: (any ReverseGeocodingService)?
     private let searchDebounceClock: any PlaceSearchDebounceClock
     private let positionClock: () -> Date
+    private let mapFeatureResolver: @MainActor (MapFeature) async throws(PlaceServiceError) -> PlaceCandidate
     private var operationGeneration = 0
     private var initialPositionCompleted = false
     private var userChangedCamera = false
     private var userCameraChangeRevision: UInt64 = 0
     private var consumedRecenterRequestID = 0
     private var isActive = false
+    private var routeOriginIsAuthorized = false
+    private var authorizationReadGeneration: UInt64 = 0
     private var reverseGeocodeGeneration: UInt64 = 0
     private var reverseGeocodeTask: Task<Void, Never>?
     private var addressLocaleIdentifier: String?
     private var focusViewport: MapFocusViewport?
+    private var mapFeatureGeneration: UInt64 = 0
+    private var mapFeatureTask: Task<Void, Never>?
+    private var acceptedNativeMapSelection: MapSelection<UUID>?
 
+    private(set) var mapSelection: MapSelection<UUID>?
+    private(set) var mapFeatureResolutionFailureID: UInt64 = 0
     private(set) var placeSearch: MapPlaceSearchModel?
     private(set) var placeSearchGeneration: UInt64 = 0
     private(set) var selectedCandidate: PlaceCandidate?
+    private(set) var selectedCandidateSource: MapCandidateSelectionSource?
     private(set) var currentPosition: DevicePosition?
     private(set) var currentAddress: String?
     var selectedDetail: MapQuickPlace?
@@ -95,6 +128,10 @@ final class MapViewModel {
         recenterRequestID != consumedRecenterRequestID
     }
 
+    var candidateForCustomAnnotation: PlaceCandidate? {
+        selectedCandidateSource == .search ? selectedCandidate : nil
+    }
+
     var visiblePlace: MapQuickPlace? {
         if let selectedCandidate {
             return MapQuickPlace(
@@ -103,7 +140,8 @@ final class MapViewModel {
                 address: selectedCandidate.address,
                 coordinate: selectedCandidate.coordinate,
                 horizontalAccuracyMetres: nil,
-                timestamp: nil
+                timestamp: nil,
+                placeIdentity: selectedCandidate.placeIdentity
             )
         }
         guard let currentPosition else { return nil }
@@ -118,24 +156,29 @@ final class MapViewModel {
     }
 
     init(
-        router: Router<MapRoute>,
         deviceLocationService: any DeviceLocationService,
         placeSearchService: (any PlaceSearchService)? = nil,
         reverseGeocodingService: (any ReverseGeocodingService)? = nil,
+        routeEstimationService: (any RouteEstimationService)? = nil,
         searchDebounceClock: any PlaceSearchDebounceClock = ContinuousPlaceSearchDebounceClock(),
-        positionClock: @escaping () -> Date = { .now }
+        positionClock: @escaping () -> Date = { .now },
+        mapFeatureResolver: @escaping @MainActor (MapFeature) async throws(PlaceServiceError) -> PlaceCandidate = {
+            _ in throw .providerUnavailable
+        }
     ) {
-        self.router = router
         self.deviceLocationService = deviceLocationService
+        self.route = MapRouteModel(service: routeEstimationService)
         self.placeSearchService = placeSearchService
         self.reverseGeocodingService = reverseGeocodingService
         self.searchDebounceClock = searchDebounceClock
         self.positionClock = positionClock
+        self.mapFeatureResolver = mapFeatureResolver
     }
 
     /// Cheap creation belongs to the opening action, never rendering or initialization.
     @discardableResult
     func openPlaceSearch() -> MapPlaceSearchModel {
+        pauseMapFeatureSelection()
         if let placeSearch { return placeSearch }
         placeSearchGeneration += 1
         let search = MapPlaceSearchModel(service: placeSearchService, clock: searchDebounceClock)
@@ -147,6 +190,7 @@ final class MapViewModel {
     func dismissPlaceSearch() {
         placeSearch?.dismiss()
         placeSearch = nil
+        resumeNativeMapSelection()
     }
 
     /// The lifecycle task carries the presentation generation captured by its view.
@@ -169,17 +213,31 @@ final class MapViewModel {
     /// A cancelled first acquisition can resume on return; completed attempts never refocus.
     func activate() async -> MapLocationOutcome? {
         isActive = true
+        // Reinspect current authorization before resuming routes from a retained fix.
+        routeOriginIsAuthorized = false
+        route.setActive(false)
+        resumeNativeMapSelection()
         if currentPosition != nil, currentAddress == nil { startReverseGeocode() }
         return await locate(isExplicit: false)
     }
 
     func recenter() async -> MapLocationOutcome? {
         guard isActive else { return nil }
+        routeOriginIsAuthorized = false
+        route.setActive(false)
+        defer {
+            updateRoute()
+            route.setActive(isActive && routeOriginIsAuthorized)
+        }
+        pauseMapFeatureSelection()
         return await locate(isExplicit: true)
     }
 
     func requestRecenter() {
+        pauseMapFeatureSelection()
         guard isActive, !isAcquiringLocation, !hasPendingRecenterRequest else { return }
+        routeOriginIsAuthorized = false
+        route.setActive(false)
         recenterRequestID += 1
     }
 
@@ -192,6 +250,10 @@ final class MapViewModel {
     /// The view cancels its structured task at the same boundary. Generation invalidation
     /// also rejects a service that returns after cancellation or a later activation.
     func deactivate() {
+        authorizationReadGeneration += 1
+        routeOriginIsAuthorized = false
+        route.setActive(false)
+        pauseMapFeatureSelection()
         placeSearch?.stop()
         cancelReverseGeocode()
         isActive = false
@@ -218,26 +280,147 @@ final class MapViewModel {
     }
 
     func selectSearchCandidate(_ candidate: PlaceCandidate) {
+        clearMapFeatureSelection()
+        selectCandidate(candidate, source: .search, focusesCamera: true)
+    }
+
+    /// Native map selection is processed synchronously, before another explicit action
+    /// can supersede it. Selecting our own marker retains the existing card.
+    func updateMapSelection(_ selection: MapSelection<UUID>?) {
+        // MapKit can clear a feature using a non-nil MapSelection whose feature
+        // and tag are both nil. Treat it like an absent optional selection.
+        let isDeselection = selection?.feature == nil && selection?.value == nil
+        if isDeselection {
+            if isActive, placeSearch == nil, selectedDetail == nil,
+               selectedCandidateSource == .nativePOI || mapFeatureTask != nil {
+                // Native focus is independent of the retained card. Only its X
+                // dismisses the candidate and returns to the session position.
+                clearMapFeatureSelection()
+            } else {
+                pauseMapFeatureSelection()
+            }
+            return
+        }
+        guard isActive, placeSearch == nil, selectedDetail == nil else {
+            pauseMapFeatureSelection()
+            return
+        }
+        // Restoring an accepted native selection is presentation bookkeeping,
+        // not another explicit provider selection or camera-focus request.
+        guard selection != mapSelection else { return }
+        if selectedCandidateSource == .nativePOI, selection == acceptedNativeMapSelection {
+            pauseMapFeatureSelection()
+            return
+        }
+        cancelMapFeatureResolution()
+        mapSelection = selection
+        guard let feature = selection?.feature else { return }
+        beginMapFeatureSelection { [mapFeatureResolver] () async throws(PlaceServiceError) -> PlaceCandidate in
+            try await mapFeatureResolver(feature)
+        }
+    }
+
+    /// Each tap owns a distinct cancellable request. The closure is also a deterministic
+    /// test seam: tests need no live provider or artificially constructed MapFeature.
+    @discardableResult
+    func beginMapFeatureSelection(
+        resolve: @escaping @MainActor () async throws(PlaceServiceError) -> PlaceCandidate
+    ) -> Task<Void, Never>? {
+        cancelMapFeatureResolution()
+        guard isActive, placeSearch == nil, selectedDetail == nil else { return nil }
+        supersedePendingPositionFocus()
+        let generation = mapFeatureGeneration
+        let cameraRevision = userCameraChangeRevision
+        mapFeatureTask = Task { [weak self] in
+            guard !Task.isCancelled else { return }
+            do {
+                let candidate = try await resolve()
+                guard !Task.isCancelled, let self, self.isActive,
+                      self.mapFeatureGeneration == generation else { return }
+                self.mapFeatureTask = nil
+                self.selectCandidate(
+                    candidate, source: .nativePOI,
+                    focusesCamera: self.userCameraChangeRevision == cameraRevision
+                )
+            } catch {
+                guard !Task.isCancelled, let self, self.isActive,
+                      self.mapFeatureGeneration == generation else { return }
+                self.mapFeatureTask = nil
+                self.pauseMapFeatureSelection()
+                if (error as? PlaceServiceError) != .cancelled { self.mapFeatureResolutionFailureID += 1 }
+            }
+        }
+        return mapFeatureTask
+    }
+
+    func awaitPendingMapFeatureSelection() async {
+        await mapFeatureTask?.value
+    }
+
+    private func cancelMapFeatureResolution() {
+        mapFeatureGeneration += 1
+        mapFeatureTask?.cancel()
+        mapFeatureTask = nil
+    }
+
+    private func clearMapFeatureSelection() {
+        cancelMapFeatureResolution()
+        mapSelection = nil
+        acceptedNativeMapSelection = nil
+    }
+
+    /// Cancel a pending replacement without discarding the accepted feature.
+    /// A feature explicitly unfocused on the map has no selection to restore.
+    private func pauseMapFeatureSelection() {
+        cancelMapFeatureResolution()
+        mapSelection = selectedCandidateSource == .nativePOI ? acceptedNativeMapSelection : nil
+    }
+
+    func resumeNativeMapSelection() {
+        guard isActive, placeSearch == nil, selectedDetail == nil,
+              mapFeatureTask == nil, selectedCandidateSource == .nativePOI else { return }
+        mapSelection = acceptedNativeMapSelection
+    }
+
+    private func selectCandidate(
+        _ candidate: PlaceCandidate,
+        source: MapCandidateSelectionSource,
+        focusesCamera: Bool
+    ) {
+        acceptedNativeMapSelection = source == .nativePOI ? mapSelection : nil
         selectedCandidate = candidate
+        selectedCandidateSource = source
         selectedDetail = nil
+        updateRoute()
+        route.setActive(isActive && routeOriginIsAuthorized)
         // Selecting a search result supersedes both passive acquisition and explicit
         // recentering. A late completion must not publish an obsolete camera focus.
+        supersedePendingPositionFocus()
+        if focusesCamera {
+            focusCamera(on: MapLocationFocus(
+                coordinate: candidate.coordinate, generation: operationGeneration,
+                geographicKind: candidate.geographicKind
+            ))
+        }
+    }
+
+    private func supersedePendingPositionFocus() {
         operationGeneration += 1
         locationFocus = nil
         isLocating = false
         isAcquiringLocation = false
         consumedRecenterRequestID = recenterRequestID
         userChangedCamera = true
-        focusCamera(on: MapLocationFocus(
-            coordinate: candidate.coordinate, generation: operationGeneration,
-            geographicKind: candidate.geographicKind
-        ))
     }
 
     func dismissSearchCandidate() {
-        guard selectedCandidate != nil else { return }
+        let dismissesPendingFeature = mapFeatureTask != nil
+        clearMapFeatureSelection()
+        guard selectedCandidate != nil || dismissesPendingFeature else { return }
         selectedCandidate = nil
+        selectedCandidateSource = nil
         selectedDetail = nil
+        updateRoute()
         guard let currentPosition else { return }
         operationGeneration += 1
         userChangedCamera = true
@@ -248,7 +431,15 @@ final class MapViewModel {
     }
 
     func showDetails() {
+        pauseMapFeatureSelection()
         selectedDetail = visiblePlace
+    }
+
+    private func updateRoute() {
+        route.update(
+            origin: routeOriginIsAuthorized ? currentPosition?.coordinate : nil,
+            destination: visiblePlace
+        )
     }
 
     /// Deterministic completion seam for an in-flight optional address request.
@@ -315,7 +506,9 @@ final class MapViewModel {
         let generation = operationGeneration
         let cameraRevision = userCameraChangeRevision
         isAcquiringLocation = true
-        isLocating = true
+        // Preserve first/no-position feedback without flashing loading over an
+        // already usable card while authorization inspection is suspended.
+        isLocating = currentPosition == nil && (isExplicit || !initialPositionCompleted)
         defer {
             if generation == operationGeneration {
                 isAcquiringLocation = false
@@ -323,9 +516,19 @@ final class MapViewModel {
             }
         }
 
+        authorizationReadGeneration += 1
+        let authorizationGeneration = authorizationReadGeneration
         let authorization = await deviceLocationService.authorization()
-        guard accepts(generation) else { return nil }
+        // Authorization belongs to this active lifecycle, independently of the
+        // camera/acquisition that a newly selected candidate may supersede.
+        guard acceptsAuthorization(authorizationGeneration) else { return nil }
         showsUserLocation = authorization.servicesEnabled && authorization.status.allowsPosition
+        routeOriginIsAuthorized = showsUserLocation
+        updateRoute()
+        if !isExplicit || generation != operationGeneration {
+            route.setActive(isActive && routeOriginIsAuthorized)
+        }
+        guard accepts(generation) else { return nil }
 
         if !isExplicit, initialPositionCompleted { return nil }
 
@@ -343,14 +546,17 @@ final class MapViewModel {
         }
 
         let reusesPosition = isExplicit && authorization.status.allowsPosition && hasFreshSessionPosition
+        isLocating = !reusesPosition
         if reusesPosition, let currentPosition {
             selectedCandidate = nil
+            selectedCandidateSource = nil
+            clearMapFeatureSelection()
             selectedDetail = nil
+            updateRoute()
             locationFocus = MapLocationFocus(
                 coordinate: currentPosition.coordinate, generation: generation,
                 geographicKind: .point
             )
-            isLocating = false
         }
 
         do {
@@ -362,6 +568,8 @@ final class MapViewModel {
             startReverseGeocode()
             if isExplicit && !reusesPosition {
                 selectedCandidate = nil
+                selectedCandidateSource = nil
+                clearMapFeatureSelection()
                 selectedDetail = nil
             }
             if selectedDetail?.id == .currentPosition {
@@ -369,6 +577,9 @@ final class MapViewModel {
             }
             showsUserLocation = position.authorization.servicesEnabled
                 && position.authorization.status.allowsPosition
+            routeOriginIsAuthorized = showsUserLocation
+            updateRoute()
+            if !isExplicit { route.setActive(isActive && routeOriginIsAuthorized) }
             if isExplicit ? userCameraChangeRevision == cameraRevision : !userChangedCamera {
                 locationFocus = MapLocationFocus(
                     coordinate: position.coordinate, generation: generation,
@@ -378,9 +589,22 @@ final class MapViewModel {
             return nil
         } catch {
             guard accepts(generation), error != .cancelled else { return nil }
+            authorizationReadGeneration += 1
+            let authorizationGeneration = authorizationReadGeneration
             let latestAuthorization = await deviceLocationService.authorization()
-            guard accepts(generation) else { return nil }
+            guard acceptsAuthorization(authorizationGeneration) else { return nil }
             showsUserLocation = latestAuthorization.servicesEnabled && latestAuthorization.status.allowsPosition
+            routeOriginIsAuthorized = showsUserLocation
+            switch error {
+            case .permissionDenied, .permissionRestricted, .servicesDisabled, .authorizationRequired:
+                routeOriginIsAuthorized = false
+            default: break
+            }
+            updateRoute()
+            if !isExplicit || generation != operationGeneration {
+                route.setActive(isActive && routeOriginIsAuthorized)
+            }
+            guard accepts(generation) else { return nil }
             initialPositionCompleted = true
             switch error {
             case .permissionDenied:
@@ -408,6 +632,10 @@ final class MapViewModel {
 
     private func accepts(_ generation: Int) -> Bool {
         isActive && generation == operationGeneration && !Task.isCancelled
+    }
+
+    private func acceptsAuthorization(_ generation: UInt64) -> Bool {
+        isActive && generation == authorizationReadGeneration && !Task.isCancelled
     }
 
     private func startReverseGeocode() {

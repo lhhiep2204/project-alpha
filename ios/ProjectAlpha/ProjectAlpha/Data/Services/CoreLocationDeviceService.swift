@@ -15,13 +15,14 @@ protocol DeviceLocationDriver: AnyObject {
     func authorizationSnapshot() async -> LocationAuthorization
     var onEvent: (@MainActor (DeviceLocationDriverEvent) -> Void)? { get set }
     func requestWhenInUseAuthorization()
-    func requestLocation()
+    func startUpdatingLocation()
     func stop()
 }
 
 nonisolated enum DeviceLocationDriverEvent: Sendable {
     case authorizationChanged(LocationAuthorization)
     case position(DevicePosition)
+    case locationUnknown
     case failure(LocationServiceError)
 }
 
@@ -118,7 +119,7 @@ final class CoreLocationDeviceService: DeviceLocationService {
                 guard !Task.isCancelled, self?.generation == requestID else { return }
                 self?.finish(.failure(.timedOut))
             }
-            driver?.requestLocation()
+            driver?.startUpdatingLocation()
         }
     }
 
@@ -130,9 +131,11 @@ final class CoreLocationDeviceService: DeviceLocationService {
                 try CurrentPositionPolicy.validate(position, now: clock.now())
                 finish(.success(position))
             } catch {
-                // An invalid fix does not complete acquisition; await another fix until timeout.
-                driver?.requestLocation()
+                // Keep the existing stream and deadline while waiting for a valid fix.
             }
+        case .locationUnknown:
+            // Core Location keeps trying after this transient error; do not restart updates.
+            break
         case let .failure(error):
             finish(.failure(error))
         }
@@ -213,7 +216,7 @@ final class CoreLocationDriver: NSObject, DeviceLocationDriver, @MainActor CLLoc
     }
 
     func requestWhenInUseAuthorization() { manager.requestWhenInUseAuthorization() }
-    func requestLocation() { manager.requestLocation() }
+    func startUpdatingLocation() { manager.startUpdatingLocation() }
     func stop() {
         stopped = true
         authorizationTask?.cancel()
@@ -235,7 +238,24 @@ final class CoreLocationDriver: NSObject, DeviceLocationDriver, @MainActor CLLoc
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard !stopped else { return }
+        Self.deliverLocations(
+            locations,
+            authorization: authorization,
+            isStopped: { self.stopped },
+            onEvent: { self.onEvent?($0) }
+        )
+    }
+
+    /// The delegate and deterministic adapter tests use the same batch boundary.
+    /// Only the broker accepts a fix; a structurally valid sample may still be rejected.
+    static func deliverLocations(
+        _ locations: [CLLocation],
+        authorization: LocationAuthorization,
+        isStopped: () -> Bool,
+        onEvent: (DeviceLocationDriverEvent) -> Void
+    ) {
         for location in locations.reversed() {
+            guard !isStopped() else { return }
             guard let coordinate = try? Coordinate(
                 latitude: location.coordinate.latitude,
                 longitude: location.coordinate.longitude
@@ -245,11 +265,9 @@ final class CoreLocationDriver: NSObject, DeviceLocationDriver, @MainActor CLLoc
                 horizontalAccuracyMetres: location.horizontalAccuracy,
                 authorization: authorization
             ) else { continue }
-            onEvent?(.position(position))
-            return
+            onEvent(.position(position))
         }
-        // Core Location has completed a one-shot request without a valid fix.
-        requestLocation()
+        // Updates remain active; an unusable batch does not restart the stream or deadline.
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: any Error) {
@@ -260,7 +278,7 @@ final class CoreLocationDriver: NSObject, DeviceLocationDriver, @MainActor CLLoc
                 onEvent?(.failure(authorization.servicesEnabled ? .permissionDenied : .servicesDisabled))
             case .locationUnknown:
                 // This is transient; the acquisition deadline remains authoritative.
-                requestLocation()
+                onEvent?(.locationUnknown)
             default:
                 onEvent?(.failure(.positionUnavailable))
             }

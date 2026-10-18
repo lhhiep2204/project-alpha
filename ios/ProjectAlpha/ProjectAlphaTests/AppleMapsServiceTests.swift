@@ -20,6 +20,13 @@ private enum MapsFixture {
     static let suggestionID = "suggestion-one"
     static let name = "Central library"
     static let address = "Example street"
+    static let singleLineAddress = "76A, Le Lai, Ben Thanh, Ho Chi Minh"
+    static let multilineAddress = "76A\nLe Lai\nBen Thanh\nHo Chi Minh"
+    static let windowsMultilineAddress = "76A\r\nLe Lai\r\nBen Thanh\r\nHo Chi Minh"
+    static let carriageReturnAddress = "76A\rLe Lai\rBen Thanh\rHo Chi Minh"
+    static let unicodeMultilineAddress = "76A\u{0085}Le Lai\u{2028}Ben Thanh\u{2029}Ho Chi Minh"
+    static let paddedMultilineAddress = "\n 76A \n\n Le Lai\t\r\n Ben Thanh \n Ho Chi Minh \n"
+    static let emptyAddress = ""
     static let primary = "Opaque:Primary"
     static let alias = "Opaque:Alias"
     static let newPrimary = "New:Primary"
@@ -149,6 +156,23 @@ private final class CompositionLocationService: DeviceLocationService {
 
 @MainActor
 struct AppleMapsServiceTests {
+    /// AC-18/24: provider line breaks become comma separators on every map address surface.
+    @Test(arguments: [
+        MapsFixture.multilineAddress,
+        MapsFixture.windowsMultilineAddress,
+        MapsFixture.carriageReturnAddress,
+        MapsFixture.unicodeMultilineAddress,
+        MapsFixture.paddedMultilineAddress
+    ])
+    func multilineProviderAddressUsesCommaSeparators(address: String) {
+        #expect(AppleMapsAddressFormatter.singleLine(address) == MapsFixture.singleLineAddress)
+    }
+
+    @Test(arguments: [nil, MapsFixture.emptyAddress, MapsFixture.address, MapsFixture.singleLineAddress])
+    func addressWithoutLineBreaksIsPreserved(address: String?) {
+        #expect(AppleMapsAddressFormatter.singleLine(address) == address)
+    }
+
     /// AC-67, U-32, D-21: only structured provider metadata gives a selected
     /// feature a broad geographic kind; a nearby city's name is not its kind.
     @Test func structuredMetadataClassifiesSelectedFeatureWithoutNameHeuristics() {
@@ -259,8 +283,8 @@ struct AppleMapsServiceTests {
         #expect(identityMatches6)
         let firstID = UUID()
         let secondID = UUID()
-        let first = await app.mapContainer.makePlaceSearchSession(id: firstID)
-        let second = await app.mapContainer.makePlaceSearchSession(id: secondID)
+        let first = await app.placeSearchService.makeSearchSession(id: firstID)
+        let second = await app.placeSearchService.makeSearchSession(id: secondID)
         #expect(first.id == firstID && second.id == secondID)
         let identityMatches7 = (first as AnyObject) !== (second as AnyObject)
         #expect(identityMatches7)

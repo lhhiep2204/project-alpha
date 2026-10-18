@@ -27,4 +27,12 @@ enum MainTab: Hashable {
         case .settings: DSSystemIcon.settingsTab.rawValue
         }
     }
+
+    var selectedSystemImage: String {
+        switch self {
+        case .home: DSSystemIcon.homeFill.rawValue
+        case .map: DSSystemIcon.mapFill.rawValue
+        case .settings: DSSystemIcon.settingsTabFill.rawValue
+        }
+    }
 }

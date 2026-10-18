@@ -67,6 +67,7 @@ nonisolated enum DSSystemIcon: String {
     case search = "magnifyingglass"
     case settings = "gear"
     case settingsTab = "gearshape"
+    case settingsTabFill = "gearshape.fill"
     case share = "square.and.arrow.up"
     case star = "star"
 

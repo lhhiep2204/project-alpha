@@ -60,7 +60,10 @@ struct MapKitMapsDriver: AppleMapsDriver {
             sdkRequest.getMapItems { items, error in
                 if let error { completion(.failure(AppleServiceErrorMapper.map(error))); return }
                 // An address enriches the exact input point; a nearby provider identity is never exposed.
-                completion(.success(ReverseGeocodedAddress(request: request, address: items?.first?.address?.fullAddress)))
+                completion(.success(ReverseGeocodedAddress(
+                    request: request,
+                    address: AppleMapsAddressFormatter.singleLine(items?.first?.address?.fullAddress)
+                )))
             }
         } cancel: { sdkRequest?.cancel() }
     }
@@ -172,7 +175,8 @@ enum AppleMapItemMapper {
         )
         return PlaceCandidate(
             id: id, source: .appleMaps, placeIdentity: identity,
-            name: item.name ?? Text.missingName, address: item.address?.fullAddress,
+            name: item.name ?? Text.missingName,
+            address: AppleMapsAddressFormatter.singleLine(item.address?.fullAddress),
             category: item.pointOfInterestCategory?.rawValue, coordinate: coordinate,
             geographicKind: geographicKind(
                 name: item.name ?? Text.missingName,
@@ -183,5 +187,20 @@ enum AppleMapItemMapper {
                 displayLocaleIdentifier: Locale.current.identifier
             )
         )
+    }
+}
+
+/// Normalize provider line separators once so search, cards and detail share the same address.
+nonisolated enum AppleMapsAddressFormatter {
+    private enum Text {
+        static let separator = ", "
+    }
+
+    static func singleLine(_ address: String?) -> String? {
+        guard let address, address.rangeOfCharacter(from: .newlines) != nil else { return address }
+        return address.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: Text.separator)
     }
 }

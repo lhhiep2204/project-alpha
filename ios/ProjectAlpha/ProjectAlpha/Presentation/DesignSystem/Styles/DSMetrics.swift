@@ -40,31 +40,3 @@ enum DSRadius {
     /// huge: 28 - Very large, pill-shaped buttons or containers
     static let huge = 28.0
 }
-
-/// Size constants for consistent component dimensions.
-enum DSSize {
-    /// xSmall: 4 - Tiny icons or details
-    static let xSmall = 4.0
-    /// small: 8 - Small icons or tap targets
-    static let small = 8.0
-    /// medium: 16 - Standard icon/button size
-    static let medium = 16.0
-    /// large: 24 - Container or image size
-    static let large = 24.0
-    /// xLarge: 32 - Large icons or controls
-    static let xLarge = 32.0
-    /// huge: 40 - Prominent UI elements
-    static let huge = 40.0
-}
-
-/// Border stroke thickness constants.
-enum DSStroke {
-    /// thin: 1 - Standard hairline border
-    static let thin = 1.0
-    /// thick: 2 - Emphasized border
-    static let thick = 2.0
-    /// thicker: 4 - Highlight or separation
-    static let thicker = 4.0
-    /// thickest: 6 - Strong visual emphasis
-    static let thickest = 6.0
-}

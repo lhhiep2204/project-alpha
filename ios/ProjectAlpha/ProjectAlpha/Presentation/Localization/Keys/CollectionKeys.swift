@@ -19,6 +19,7 @@ nonisolated enum CollectionKeys: String, CaseIterable, LocalizedKey {
     case collectionRowSummary = "%1$@, %2$lld locations, created %3$@"
     case collectionUnavailable = "This collection is no longer available."
     case collectionChanged = "This collection changed before deletion. Review the latest details and try again."
+    case conflictComparisonMessage = "This collection changed elsewhere. Reload the latest version or reapply your edits.\n\nYour edits: %1$@\nLatest saved: %2$@"
     case conflictTitle = "Collection Changed"
     case conflictMessage = "This collection changed elsewhere. Reload the latest version or reapply your edits."
 
@@ -76,6 +77,10 @@ nonisolated enum CollectionKeys: String, CaseIterable, LocalizedKey {
 
 @MainActor
 extension CollectionKeys {
+    static func conflictComparisonMessage(draftName: String, latestName: String, locale: Locale) -> String {
+        formatted(.conflictComparisonMessage, locale: locale, arguments: [draftName, latestName])
+    }
+
     static func locationCount(_ count: Int64, locale: Locale) -> String {
         formatted(.locationCount, locale: locale, arguments: [count])
     }

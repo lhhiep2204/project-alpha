@@ -17,6 +17,8 @@ struct MapQuickPlaceCard: View {
     let onOpenInMaps: () -> Void
     let onViewDetails: () -> Void
     let onReferenceHeightChange: (CGFloat) -> Void
+    var route: MapRouteModel? = nil
+    var distanceUnit: DistanceUnit = .kilometre
 
     var body: some View {
         let contentPadding = MapQuickCardMetrics.contentPadding
@@ -24,8 +26,8 @@ struct MapQuickPlaceCard: View {
         return ViewThatFits(in: .vertical) {
             cardContent(.all, includesMaps: true)
             cardContent(.all, includesMaps: false)
-            cardContent(.coordinate, includesMaps: true)
-            cardContent(.coordinate, includesMaps: false)
+            cardContent(.route, includesMaps: true)
+            cardContent(.route, includesMaps: false)
             cardContent(.address, includesMaps: true)
             cardContent(.address, includesMaps: false)
             cardContent(.title, includesMaps: true)
@@ -72,10 +74,10 @@ struct MapQuickPlaceCard: View {
             Group {
                 switch level {
                 case .all: placeFacts(reference: false)
-                case .coordinate:
+                case .route:
                     VStack(alignment: .leading, spacing: MapQuickCardMetrics.compactSectionSpacing) {
                         placeSummary
-                        coordinateFact
+                        routeFacts(reference: false)
                     }
                 case .address: placeSummary
                 case .title:
@@ -109,20 +111,21 @@ struct MapQuickPlaceCard: View {
             placeSummary(reference: reference)
 
             VStack(alignment: .leading, spacing: MapQuickCardMetrics.factSpacing) {
+                routeFacts(reference: reference)
                 coordinateFact(reference: reference)
-
-                if let accuracy = reference ? MapQuickCardMetrics.referenceAccuracy : place.horizontalAccuracyMetres,
-                   let timestamp = reference ? MapQuickCardMetrics.referenceTimestamp : place.timestamp {
-                    inlineFact(.horizontalAccuracy) {
-                        Text(Measurement(value: accuracy, unit: UnitLength.meters), format: .measurement(width: .abbreviated))
-                    }
-                    inlineFact(.positionTimestamp) {
-                        Text(timestamp, format: .dateTime.day().month().year().hour().minute())
-                    }
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func routeFacts(reference: Bool) -> some View {
+        if reference || !place.isCurrentPosition {
+            MapRouteSummaryView(
+                state: reference ? MapRoutePreviewFixtures.unavailable : (route?.state ?? .noOrigin),
+                distanceUnit: distanceUnit
+            )
+        }
     }
 
     private func inlineFact<Value: View>(_ key: MapKeys, @ViewBuilder value: () -> Value) -> some View {
@@ -132,10 +135,10 @@ struct MapQuickPlaceCard: View {
                 Text(verbatim: MapQuickCardMetrics.factLabelSeparator)
                     .accessibilityHidden(true)
             }
-            .font(.caption)
             .foregroundStyle(.secondary)
-            value().font(.subheadline)
+            value()
         }
+        .font(MapPlaceTypography.fact)
         .accessibilityElement(children: .combine)
     }
 
@@ -163,7 +166,7 @@ struct MapQuickPlaceCard: View {
                     Text(address)
                 }
             }
-            .font(.subheadline)
+            .font(.subheadline.weight(.medium))
             .foregroundStyle(.secondary)
             .lineLimit(2, reservesSpace: reference)
             .fixedSize(horizontal: false, vertical: true)
@@ -240,13 +243,13 @@ struct MapQuickPlaceCard: View {
     private var detailsButton: some View {
         Button(action: onViewDetails) {
             Text(MapKeys.viewDetails)
-                .font(.subheadline)
+                .font(.footnote)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, MapQuickCardMetrics.actionHorizontalPadding)
                 .frame(
                     minWidth: MapQuickCardMetrics.minimumTarget,
-                    minHeight: MapQuickCardMetrics.minimumTarget
+                    minHeight: MapQuickCardMetrics.actionVisualHeight
                 )
                 .background(
                     reduceTransparency ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
@@ -256,19 +259,22 @@ struct MapQuickPlaceCard: View {
                     reduceTransparency ? .identity : .regular.interactive(),
                     in: .capsule
                 )
+                .padding(.vertical, MapQuickCardMetrics.actionTargetOutset)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .padding(.vertical, -MapQuickCardMetrics.actionTargetOutset)
         .accessibilityIdentifier(MapQuickCardAccessibility.details)
     }
 
     private var mapsButton: some View {
         Button(action: onOpenInMaps) {
             Text(CommonKeys.openInMaps)
-                .font(.subheadline)
+                .font(.footnote)
                 .padding(.horizontal, MapQuickCardMetrics.actionHorizontalPadding)
                 .frame(
                     minWidth: MapQuickCardMetrics.minimumTarget,
-                    minHeight: MapQuickCardMetrics.minimumTarget
+                    minHeight: MapQuickCardMetrics.actionVisualHeight
                 )
                 .background(
                     reduceTransparency ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
@@ -278,8 +284,11 @@ struct MapQuickPlaceCard: View {
                     reduceTransparency ? .identity : .regular.interactive(),
                     in: .capsule
                 )
+                .padding(.vertical, MapQuickCardMetrics.actionTargetOutset)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .padding(.vertical, -MapQuickCardMetrics.actionTargetOutset)
         .accessibilityIdentifier(MapQuickCardAccessibility.openInMaps)
     }
 }
@@ -290,20 +299,22 @@ private struct MapQuickCardMeasurementIdentity: Hashable {
 }
 
 private enum MapQuickCardContentLevel {
-    case all, coordinate, address, title, none
+    case all, route, address, title, none
 }
 
 private enum MapQuickCardMetrics {
     static let factLabelSeparator = ":"
-    static let referenceAccuracy: Double = 1_000
-    static let referenceTimestamp = Date(timeIntervalSince1970: 1_791_792_000)
     static let referenceLatitude: Double = -90
     static let referenceLongitude: Double = -180
     static let spacing: CGFloat = 8
     static let compactSectionSpacing: CGFloat = 4
     static let actionSpacing: CGFloat = 8
     static let factSpacing: CGFloat = 4
-    static let actionHorizontalPadding: CGFloat = 12
+    static let actionHorizontalPadding: CGFloat = 8
+    static let actionVisualHeight: CGFloat = 32
+    // Hit areas extend into the existing clear space above/below the capsules;
+    // only their visible height contributes to the card's content fitting.
+    static let actionTargetOutset: CGFloat = (minimumTarget - actionVisualHeight) / 2
     static let contentPadding: CGFloat = 12
     static let factsToActionsSpacing: CGFloat = 16
     static let coordinateDigits = 6
@@ -317,7 +328,7 @@ private enum MapQuickCardMetrics {
     static let reducedLandscapePreviewHeight: CGFloat = 180
     static let reducedLandscapePreviewWidth: CGFloat = 380
     static let minimalPreviewHeight: CGFloat = 108
-    static let currentLandscapePreviewHeight: CGFloat = 218
+    static let currentLandscapePreviewHeight: CGFloat = 206
 }
 
 private enum MapQuickCardSymbols {

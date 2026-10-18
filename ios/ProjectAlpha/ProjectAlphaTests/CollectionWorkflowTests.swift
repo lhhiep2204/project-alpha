@@ -870,39 +870,34 @@ struct CollectionPresentationTests {
         )
         #expect(model.name.isEmpty)
         #expect(!model.isDirty)
-        #expect(!model.isNameValid)
         #expect(await model.save(now: createdAt) == false)
         #expect(try await repository.collection(id: id) == nil)
 
         model.name = CollectionTestValue.tripName
         #expect(model.isDirty)
-        #expect(model.isNameValid)
         #expect(await model.save(now: createdAt))
         let committed = try #require(try await LibraryStore(container: container).collection(id: id))
         #expect(committed.collection.name == CollectionTestValue.tripName)
         #expect(committed.collection.createdAt == createdAt)
     }
 
-    @Test func homeFiltersNamesAndOpensStableCollectionID() async throws {
+    @Test func homeFiltersNamesAndPreservesCollectionIdentity() async throws {
         let store = LibraryStore(container: try memoryContainer())
         let repository = SwiftDataCollectionRepository(store: store)
         _ = try await repository.bootstrap(bootstrapCommand())
         let trip = try await repository.create(createCommand())
         _ = try await repository.create(createCommand(name: CollectionTestValue.workName, time: 3))
-        let router = Router<HomeRoute>(root: .root)
-        let model = HomeViewModel(router: router, repository: repository,
+        let model = HomeViewModel(repository: repository,
                                   useCases: CollectionUseCases(repository: repository))
         await model.reload()
         #expect(model.phase == .ready)
         #expect(model.collections.count == 3)
         model.searchText = CollectionTestValue.searchText
         #expect(model.visibleCollections.map(\.id) == [trip.collection.id])
-        model.open(try #require(model.visibleCollections.first))
-        #expect(router.paths == [.collection(id: trip.collection.id)])
+        #expect(model.visibleCollections.first?.collection == trip.collection)
         model.searchText = CollectionTestValue.missingSearchText
         #expect(model.visibleCollections.isEmpty)
         #expect(model.collections.count == 3)
-        #expect(router.paths == [.collection(id: trip.collection.id)])
     }
 
     /// AC-62/INV-05: a sole filtered Home row disappears on success and remains on failed commit.
@@ -913,7 +908,7 @@ struct CollectionPresentationTests {
         let trip = try await writer.create(createCommand())
         let work = try await writer.create(createCommand(name: CollectionTestValue.workName, time: 3))
         let repository = SwiftDataCollectionRepository(store: writer)
-        let home = HomeViewModel(router: Router<HomeRoute>(root: .root), repository: repository,
+        let home = HomeViewModel(repository: repository,
                                  useCases: CollectionUseCases(repository: repository))
         await home.reload()
         home.searchText = CollectionTestValue.searchText
@@ -930,7 +925,6 @@ struct CollectionPresentationTests {
             throw CollectionTestFailure.injectedSave
         })
         let failingHome = HomeViewModel(
-            router: Router<HomeRoute>(root: .root),
             repository: SwiftDataCollectionRepository(store: failingStore),
             useCases: CollectionUseCases(repository: SwiftDataCollectionRepository(store: failingStore))
         )
@@ -1174,6 +1168,90 @@ struct CollectionPresentationTests {
         #expect(persisted.first?.name == model.name)
     }
 
+    /// AC-55/INV-07: cancelling conflict UI retains the draft; the next ordinary
+    /// Save reports only its current outcome and keeps the original revision guard.
+    @Test(arguments: 0..<3)
+    func ordinarySaveAfterConflictExposesOnlyCurrentFailure(failure: Int) async throws {
+        let container = try memoryContainer()
+        let store = LibraryStore(container: container)
+        _ = try await store.bootstrap(bootstrapCommand())
+        let original = try await store.create(createCommand()).collection
+        let repository = SwiftDataCollectionRepository(store: failure == 1
+            ? LibraryStore(container: container, beforeSave: { throw CollectionTestFailure.injectedSave })
+            : store)
+        let model = CollectionEditorViewModel(useCases: CollectionUseCases(repository: repository),
+                                              target: .edit(original))
+        let latest = try await store.update(UpdateCollectionCommand(
+            id: original.id, expectedRevision: original.revision,
+            name: CollectionTestValue.competingName, updatedAt: Date(timeIntervalSince1970: 3)
+        )).collection
+        model.name = CollectionTestValue.localDraftName
+        #expect(await model.save() == false)
+        #expect(model.latestConflict == latest)
+        // Cancel has no model mutation. A name edit must not dismiss conflict resolution itself.
+        model.name = CollectionTestValue.renamedName
+        #expect(model.latestConflict == latest)
+        if failure == 0 {
+            model.name = CollectionTestValue.invalidName
+        } else if failure == 1 {
+            // Reload explicitly adopts the latest revision; create another conflict before
+            // forcing storage failure using a scripted repository below instead.
+            let scripted = ConflictThenFailureRepository(latest: latest, failure: .storageUnavailable)
+            let failingModel = CollectionEditorViewModel(
+                useCases: CollectionUseCases(repository: scripted), target: .edit(original))
+            failingModel.name = CollectionTestValue.localDraftName
+            #expect(await failingModel.save() == false)
+            #expect(failingModel.latestConflict == latest)
+            #expect(await failingModel.save() == false)
+            #expect(failingModel.latestConflict == nil)
+            #expect(failingModel.saveError == .failed)
+            #expect(failingModel.name == CollectionTestValue.localDraftName)
+            let commands = await scripted.commands
+            #expect(commands.count == 2)
+            #expect(commands.allSatisfy { $0.id == original.id && $0.expectedRevision == original.revision })
+            return
+        } else {
+            _ = try await store.delete(DeleteCollectionCommand(
+                id: latest.id, expectedRevision: latest.revision, expectedLocationCount: 0))
+        }
+        let draft = model.name
+        #expect(await model.save() == false)
+        #expect(model.latestConflict == nil)
+        #expect(model.saveError == (failure == 0 ? .nameRequired : .missing))
+        #expect(model.name == draft)
+        #expect(model.isDirty)
+        if failure == 0 {
+            model.name = CollectionTestValue.localDraftName
+            #expect(model.saveError == nil)
+            #expect(await model.save() == false)
+            #expect(model.latestConflict == latest) // No blind revision advancement.
+            #expect(try await store.collection(id: original.id)?.collection == latest)
+        }
+    }
+
+    /// AC-41/55: editing the validated field clears stale field feedback, while
+    /// persistence failure remains actionable until another Save result exists.
+    @Test(arguments: [false, true])
+    func correctingInvalidNameClearsOnlyFieldFeedback(overlong: Bool) async throws {
+        let repository = ConflictThenFailureRepository(latest: Collection(
+            id: UUID(), name: CollectionTestValue.tripName, isDefault: false,
+            createdAt: Date(timeIntervalSince1970: 1), updatedAt: Date(timeIntervalSince1970: 1), revision: 1
+        ), failure: .storageUnavailable)
+        let model = CollectionEditorViewModel(useCases: CollectionUseCases(repository: repository),
+            target: .create(id: UUID(), createdAt: Date(timeIntervalSince1970: 1)))
+        model.name = overlong ? CollectionTestValue.overlongName : CollectionTestValue.invalidName
+        #expect(await model.save() == false)
+        #expect(model.saveError == (overlong ? .nameTooLong : .nameRequired))
+        model.name = CollectionTestValue.localDraftName
+        #expect(model.saveError == nil)
+        #expect(model.isDirty)
+        #expect(await model.save() == false)
+        #expect(model.saveError == .failed)
+        model.name = CollectionTestValue.renamedName
+        #expect(model.saveError == .failed)
+        #expect(model.name == CollectionTestValue.renamedName)
+    }
+
     @Test func editorConflictRetainsDraftAndCanReapplyAgainstLatestRevision() async throws {
         let store = LibraryStore(container: try memoryContainer())
         let repository = SwiftDataCollectionRepository(store: store)
@@ -1318,4 +1396,25 @@ struct AdaptiveLayoutSourceAuditTests {
             }
         }
     }
+}
+
+/// AC-55: deterministic conflict-to-storage transition at the repository boundary.
+private actor ConflictThenFailureRepository: CollectionRepository {
+    let latest: Collection
+    let failure: CollectionWriteError
+    private(set) var commands: [UpdateCollectionCommand] = []
+    init(latest: Collection, failure: CollectionWriteError) { self.latest = latest; self.failure = failure }
+    func bootstrap(_ command: BootstrapCollectionCommand) async throws -> CollectionListSnapshot { throw failure }
+    func snapshot() async throws -> CollectionListSnapshot { throw failure }
+    func collection(id: UUID) async throws -> CollectionSummary? { throw failure }
+    func observeSnapshots() async -> AsyncThrowingStream<CollectionListSnapshot, any Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+    func create(_ command: CreateCollectionCommand) async throws -> CollectionCommit { throw failure }
+    func update(_ command: UpdateCollectionCommand) async throws -> CollectionCommit {
+        commands.append(command)
+        if commands.count == 1 { throw CollectionWriteError.editConflict(latest: latest, locationCount: 0) }
+        throw failure
+    }
+    func delete(_ command: DeleteCollectionCommand) async throws -> DeleteCollectionCommit { throw failure }
 }

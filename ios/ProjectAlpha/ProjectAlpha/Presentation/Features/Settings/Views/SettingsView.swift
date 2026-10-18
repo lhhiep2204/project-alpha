@@ -15,11 +15,6 @@ struct SettingsView: View {
 
     @Environment(AppPreferences.self) private var preferences
     @Environment(\.locale) private var locale
-    @State private var viewModel: SettingsViewModel
-
-    init(viewModel: SettingsViewModel) {
-        _viewModel = State(initialValue: viewModel)
-    }
 
     var body: some View {
         @Bindable var preferences = preferences
@@ -31,7 +26,7 @@ struct SettingsView: View {
                         if language == .system {
                             Text(SettingsKeys.system).tag(language)
                         } else {
-                            Text(languageName(for: language)).tag(language)
+                            Text(verbatim: languageName(for: language)).tag(language)
                         }
                     }
                 } label: {
@@ -65,19 +60,18 @@ struct SettingsView: View {
                 Text(SettingsKeys.application)
             }
         }
-        .id(preferences.language)
         .navigationTitle(Text(verbatim: LocalizationManager.localizedString(CommonKeys.settings, locale: locale)))
     }
 
     private func languageName(for language: Language) -> String {
         Locale(identifier: language.code).localizedString(forIdentifier: language.code)
-        ?? language.rawValue
+            ?? language.rawValue
     }
 }
 
 #Preview {
     NavigationStack {
-        SettingsView(viewModel: .init(router: .init(root: .root)))
+        SettingsView()
     }
     .environment(AppPreferences(store: PreviewPreferenceStore()))
     .environment(\.locale, Locale(identifier: Language.english.code))

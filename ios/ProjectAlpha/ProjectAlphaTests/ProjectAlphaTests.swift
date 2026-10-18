@@ -66,7 +66,6 @@ struct ArchitectureTests {
         weak var scene: SceneCoordinator?
         weak var home: HomeViewModel?
         weak var map: MapViewModel?
-        weak var settings: SettingsViewModel?
         weak var router: Router<HomeRoute>?
         do {
             let owner = SceneCoordinator()
@@ -74,23 +73,19 @@ struct ArchitectureTests {
                 container: try LibraryStoreConfiguration.makeContainer(isStoredInMemoryOnly: true)
             ))
             let homeModel = HomeViewModel(
-                router: owner.homeRouter,
                 repository: repository,
                 useCases: CollectionUseCases(repository: repository)
             )
             let mapModel = MapViewModel(
-                router: owner.mapRouter,
                 deviceLocationService: MapPresentationLocationService()
             )
-            let settingsModel = SettingsViewModel(router: owner.settingsRouter)
             scene = owner
             home = homeModel
             map = mapModel
-            settings = settingsModel
             router = owner.homeRouter
-            #expect(scene != nil && home != nil && map != nil && settings != nil)
+            #expect(scene != nil && home != nil && map != nil)
         }
-        #expect(scene == nil && home == nil && map == nil && settings == nil && router == nil)
+        #expect(scene == nil && home == nil && map == nil && router == nil)
     }
 
     @Test func preferencesPersistAndInvalidValuesFallBack() throws {

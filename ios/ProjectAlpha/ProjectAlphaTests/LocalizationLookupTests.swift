@@ -12,6 +12,44 @@ import Testing
 /// J-08 / U-17: navigation chrome follows the selected app language.
 @MainActor
 struct LocalizationLookupTests {
+    /// AC-55/60: the shipping compiled catalog displays both names literally,
+    /// even when user text contains punctuation or format-control characters.
+    @Test(arguments: Language.allCases.filter { $0 != .system })
+    func conflictComparisonPreservesBothUserNames(language: Language) {
+        let message = CollectionKeys.conflictComparisonMessage(
+            draftName: CollectionCopyFixture.draftName, latestName: CollectionCopyFixture.latestName,
+            locale: language.locale)
+        #expect(message.contains(CollectionCopyFixture.draftName))
+        #expect(message.contains(CollectionCopyFixture.latestName))
+        #expect(!message.contains(CollectionCopyFixture.unexpandedObjectPlaceholder))
+    }
+
+    /// AC-36/60: real compiled plural resources preserve the localized singular
+    /// grammar for one child and expand the collection name and 0/1/2 counts.
+    @Test(arguments: CollectionCopyFixture.languages, [Int64(0), 1, 2])
+    func deleteConfirmationUsesCorrectCompiledPlural(language: Language, count: Int64) {
+        let expected: String
+        switch language {
+        case .spanish:
+            expected = count == 1
+                ? CollectionCopyFixture.spanishOne : CollectionCopyFixture.spanishOther(count)
+        case .french:
+            expected = count <= 1
+                ? CollectionCopyFixture.frenchOne(count) : CollectionCopyFixture.frenchOther
+        case .italian:
+            expected = count == 1
+                ? CollectionCopyFixture.italianOne : CollectionCopyFixture.italianOther(count)
+        case .portuguese:
+            expected = count <= 1
+                ? CollectionCopyFixture.portugueseOne(count) : CollectionCopyFixture.portugueseOther
+        default:
+            Issue.record()
+            return
+        }
+        #expect(CollectionKeys.deleteCollectionMessage(
+            name: CollectionCopyFixture.collectionName, count: count, locale: language.locale) == expected)
+    }
+
     @Test func selectedLocaleChoosesMatchingTranslation() throws {
         let fixture = try LocalizationBundleFixture()
         defer { fixture.remove() }
@@ -124,4 +162,28 @@ private struct LocalizationBundleFixture {
     func remove() {
         try? FileManager.default.removeItem(at: url)
     }
+}
+
+private enum CollectionCopyFixture {
+    static let languages: [Language] = [.spanish, .french, .italian, .portuguese]
+    static let collectionName = "Trips 50%"
+    static let draftName = "Draft: “50% %@” — α"
+    static let latestName = "Latest: ‘100% %1$@’ — العربية"
+    static let unexpandedObjectPlaceholder = "%2$@"
+    static let spanishOne = "¿Eliminar «Trips 50%» y su 1 lugar? Esta acción no se puede deshacer."
+    static func spanishOther(_ count: Int64) -> String {
+        "¿Eliminar «Trips 50%» y sus \(count) lugares? Esta acción no se puede deshacer."
+    }
+    static func frenchOne(_ count: Int64) -> String {
+        "Supprimer « Trips 50% » et son \(count) lieu ? Cette action est irréversible."
+    }
+    static let frenchOther = "Supprimer « Trips 50% » et ses 2 lieux ? Cette action est irréversible."
+    static let italianOne = "Eliminare “Trips 50%” e il suo 1 luogo? Questa azione non può essere annullata."
+    static func italianOther(_ count: Int64) -> String {
+        "Eliminare “Trips 50%” e i suoi \(count) luoghi? Questa azione non può essere annullata."
+    }
+    static func portugueseOne(_ count: Int64) -> String {
+        "Excluir “Trips 50%” e seu \(count) local? Esta ação não pode ser desfeita."
+    }
+    static let portugueseOther = "Excluir “Trips 50%” e seus 2 locais? Esta ação não pode ser desfeita."
 }

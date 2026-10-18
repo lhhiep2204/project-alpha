@@ -9,13 +9,7 @@ import SwiftUI
 
 @MainActor
 final class SettingsContainer {
-    func makeSettingsView(
-        router: Router<SettingsRoute>
-    ) -> SettingsView {
-        SettingsView(
-            viewModel: SettingsViewModel(
-                router: router
-            )
-        )
+    func makeSettingsView() -> SettingsView {
+        SettingsView()
     }
 }

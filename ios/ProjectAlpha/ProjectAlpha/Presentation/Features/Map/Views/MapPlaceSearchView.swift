@@ -9,6 +9,7 @@ import SwiftUI
 
 struct MapPlaceSearchView: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.locale) private var locale
     let model: MapPlaceSearchModel
     let onClose: () -> Void
     @FocusState private var searchFocused: Bool
@@ -55,7 +56,7 @@ struct MapPlaceSearchView: View {
             .listStyle(.plain)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(MapSearchAccessibility.screen)
-            .navigationTitle(Text(MapKeys.searchPlacesTitle))
+            .navigationTitle(Text(verbatim: LocalizationManager.localizedString(MapKeys.searchPlacesTitle, locale: locale)))
             .navigationBarTitleDisplayMode(.inline)
             // An inset native field keeps the app's title/Close visible while editing.
             // Searchable replaces this chrome with a system Cancel action when focused.

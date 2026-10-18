@@ -20,12 +20,39 @@ private enum MapSearchUITestFixture {
     static let returnKey = "\n"
     static let emptyValue = ""
     static let launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+    // NSArgumentDomain overrides only this process; localized copy assertions
+    // remain independent of the user's persisted in-app language preference.
+    static let englishAppPreferenceArguments = ["-CURRENT_LANGUAGE", "English"]
+    static let englishMapLaunchArguments = launchArguments + englishAppPreferenceArguments
     static let existsPredicate = "exists == true"
     static let absentPredicate = "exists == false"
     static let valuePredicate = "value == %@"
     static let emptyFieldPredicate = "value == %@ OR value == %@"
     static let timeout: TimeInterval = 10
 }
+
+private enum SettingsUITestFixture {
+    static let languagePicker = "settings.language"
+    static let french = "français"
+    static let frenchSettingsTitle = "Paramètres"
+    static let frenchHomeTitle = "Mes collections"
+    static let arabicSettingsTitle = "الإعدادات"
+    static let staleNavigationTitle = "The navigation title did not follow the selected app language."
+    static let arabic = "العربية"
+    static let englishSystem = "System"
+    static let frenchSystem = "Système"
+    static let arabicSystem = "حسب النظام"
+    static let backButton = "BackButton"
+    static let hittablePredicate = "exists == true AND hittable == true"
+    static let missingControl = "Required Settings control did not become usable."
+    static let restoreFailed = "The language regression could not restore the original preference; inspect the attached accessibility tree."
+    static let initialStateAttachment = "Settings language original preference and accessibility tree"
+    static let restoreStateAttachment = "Settings language restoration accessibility tree"
+    static let attachmentSeparator = "\n\n"
+}
+
+private enum SettingsUITestFailure: Error { case missingControl }
+
 
 final class ProjectAlphaUITests: XCTestCase {
 
@@ -58,7 +85,7 @@ final class ProjectAlphaUITests: XCTestCase {
     /// A compact iPhone journey; provider results and adaptive/device coverage have separate gates.
     func testMapSearchOpensOnlyAfterSearchActionAndCloses() throws {
         let app = XCUIApplication()
-        app.launchArguments = MapSearchUITestFixture.launchArguments
+        app.launchArguments = MapSearchUITestFixture.englishMapLaunchArguments
         app.launch()
         defer { app.terminate() }
 
@@ -153,6 +180,122 @@ final class ProjectAlphaUITests: XCTestCase {
         let freshScreenDismissed = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: MapSearchUITestFixture.absentPredicate), object: screen)
         XCTAssertEqual(XCTWaiter.wait(for: [freshScreenDismissed], timeout: MapSearchUITestFixture.timeout), .completed)
+    }
+
+    /// J-08, AC-36/60: native language selection closes its picker and applies
+    /// the selected locale without resetting other destinations or preferences.
+    @MainActor
+    func testNativeLanguageSelectionDismissesPickerAndUpdatesApp() throws {
+        // XCTest's stop-on-failure exception can bypass Swift defer. Keep failures
+        // nonfatal here and explicitly throw before interacting with missing controls.
+        continueAfterFailure = true
+        let app = XCUIApplication()
+        app.launchArguments = MapSearchUITestFixture.launchArguments
+        app.launch()
+        defer { app.terminate() }
+        let settingsTab = app.tabBars.buttons.element(boundBy: 2)
+        try tapSettingsControl(settingsTab)
+        let picker = app.buttons[SettingsUITestFixture.languagePicker]
+        try requireSettingsControl(picker)
+        let initialValue = try XCTUnwrap(picker.value as? String)
+        let initial = XCTAttachment(string: initialValue + SettingsUITestFixture.attachmentSeparator + app.debugDescription)
+        initial.name = SettingsUITestFixture.initialStateAttachment
+        initial.lifetime = .keepAlways
+        add(initial)
+        // Restoration avoids assertions until navigation and selection attempts finish.
+        // This runs on successful completion and on every guarded failure below.
+        defer {
+            let restored = restoreSettingsLanguage(initialValue, in: app)
+            let attachment = XCTAttachment(string: app.debugDescription)
+            attachment.name = SettingsUITestFixture.restoreStateAttachment
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            XCTAssertTrue(restored, SettingsUITestFixture.restoreFailed)
+        }
+        try tapSettingsControl(picker)
+        let french = app.buttons[SettingsUITestFixture.french]
+        let arabic = app.buttons[SettingsUITestFixture.arabic]
+        try tapSettingsControl(french)
+        try requireSettingsNavigationTitle(SettingsUITestFixture.frenchSettingsTitle, in: app)
+        try requireSettingsControl(picker)
+        XCTAssertEqual(picker.value as? String, SettingsUITestFixture.french)
+        try tapSettingsControl(app.tabBars.buttons.element(boundBy: 0))
+        try requireSettingsNavigationTitle(SettingsUITestFixture.frenchHomeTitle, in: app)
+        try tapSettingsControl(settingsTab)
+        try tapSettingsControl(picker)
+        try tapSettingsControl(arabic)
+        try requireSettingsNavigationTitle(SettingsUITestFixture.arabicSettingsTitle, in: app)
+        try requireSettingsControl(picker)
+        XCTAssertEqual(picker.value as? String, SettingsUITestFixture.arabic)
+    }
+
+    @MainActor
+    private func requireSettingsNavigationTitle(_ title: String, in app: XCUIApplication) throws {
+        guard app.navigationBars[title].waitForExistence(timeout: MapSearchUITestFixture.timeout) else {
+            XCTFail(SettingsUITestFixture.staleNavigationTitle)
+            throw SettingsUITestFailure.missingControl
+        }
+    }
+
+    @MainActor
+    private func requireSettingsControl(_ control: XCUIElement) throws {
+        guard settingsControlIsUsable(control) else {
+            XCTFail(SettingsUITestFixture.missingControl)
+            throw SettingsUITestFailure.missingControl
+        }
+    }
+
+    @MainActor
+    private func tapSettingsControl(_ control: XCUIElement) throws {
+        try requireSettingsControl(control)
+        control.tap()
+    }
+
+    @MainActor
+    private func settingsControlIsUsable(_ control: XCUIElement) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: SettingsUITestFixture.hittablePredicate), object: control)
+        return XCTWaiter.wait(for: [expectation], timeout: MapSearchUITestFixture.timeout) == .completed
+    }
+
+    /// No failing assertions during cleanup: reach root, select the original choice,
+    /// return to root, and verify the effective value before reporting a result.
+    @MainActor
+    private func restoreSettingsLanguage(_ initialValue: String, in app: XCUIApplication) -> Bool {
+        let settingsTab = app.tabBars.buttons.element(boundBy: 2)
+        guard settingsControlIsUsable(settingsTab) else { return false }
+        settingsTab.tap()
+        let picker = app.buttons[SettingsUITestFixture.languagePicker]
+        let back = app.buttons[SettingsUITestFixture.backButton]
+        if back.exists && back.isHittable { back.tap() }
+        guard settingsControlIsUsable(picker) else { return false }
+        if picker.value as? String == initialValue { return true }
+        picker.tap()
+        let systemLabels = [SettingsUITestFixture.englishSystem, SettingsUITestFixture.frenchSystem,
+                            SettingsUITestFixture.arabicSystem]
+        let isSystem = systemLabels.contains(initialValue)
+        var original: XCUIElement {
+            if isSystem {
+                return systemLabels.map { app.buttons[$0] }.first { $0.exists && $0.isHittable }
+                    ?? app.buttons[initialValue]
+            }
+            return app.buttons[initialValue]
+        }
+        // The original language may be below the current viewport. Start from the
+        // first row (System) then scan the finite supported-language list.
+        for _ in 0..<5 {
+            if original.exists && original.isHittable { break }
+            app.swipeDown()
+        }
+        for _ in 0..<8 {
+            if original.exists && original.isHittable { break }
+            app.swipeUp()
+        }
+        guard settingsControlIsUsable(original) else { return false }
+        original.tap()
+        if back.exists && back.isHittable { back.tap() }
+        guard settingsControlIsUsable(picker) else { return false }
+        return picker.value as? String == initialValue
     }
 
     @MainActor

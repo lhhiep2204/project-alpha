@@ -47,7 +47,7 @@ struct HomeView: View {
                 collectionList
             }
         }
-        .navigationTitle(Text(CollectionKeys.title))
+        .navigationTitle(Text(verbatim: LocalizationManager.localizedString(CollectionKeys.title, locale: locale)))
         .searchable(text: $viewModel.searchText, prompt: Text(CommonKeys.search))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -143,6 +143,8 @@ struct HomeView: View {
                     if !summary.collection.isDefault {
                         deleteButton(for: summary)
                         editButton(for: summary)
+                            // Keep the white swipe-action symbol visible under the app's primary tint.
+                            .tint(.gray)
                     }
                 }
                 .contextMenu {
@@ -384,7 +386,6 @@ extension HomeView {
     let repository = PreviewCollectionRepository()
     HomeView(
         viewModel: .init(
-            router: .init(root: .root),
             repository: repository,
             useCases: CollectionUseCases(repository: repository)
         ),

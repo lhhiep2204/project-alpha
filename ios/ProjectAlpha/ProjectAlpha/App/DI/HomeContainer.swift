@@ -10,13 +10,11 @@ import SwiftUI
 @MainActor
 final class HomeContainer {
     func makeHomeView(
-        router: Router<HomeRoute>,
         repository: any CollectionRepository,
         selection: Binding<HomeRoute?>
     ) -> HomeView {
         HomeView(
             viewModel: HomeViewModel(
-                router: router,
                 repository: repository,
                 useCases: CollectionUseCases(repository: repository)
             ),

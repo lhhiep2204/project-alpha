@@ -157,7 +157,10 @@ final class MapKitPlaceSearchDriver: NSObject, ApplePlaceSearchDriver, @MainActo
         suggestionsByID.removeAll()
         let suggestions = completer.results.map { completion in
             let id = UUID().uuidString
-            let suggestion = PlaceSuggestion(id: id, title: completion.title, subtitle: completion.subtitle)
+            let suggestion = PlaceSuggestion(
+                id: id, title: completion.title,
+                subtitle: AppleMapsAddressFormatter.singleLine(completion.subtitle)
+            )
             completions[id] = completion
             suggestionsByID[id] = suggestion
             return suggestion

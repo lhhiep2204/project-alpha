@@ -42,7 +42,11 @@ final class CollectionEditorViewModel {
         get { editableName }
         set {
             guard !isSaving else { return }
+            guard editableName != newValue else { return }
             editableName = newValue
+            if saveError == .nameRequired || saveError == .nameTooLong {
+                saveError = nil
+            }
         }
     }
 
@@ -54,8 +58,6 @@ final class CollectionEditorViewModel {
     var isDirty: Bool {
         name != originalName
     }
-
-    var isNameValid: Bool { (try? CollectionNamePolicy.validated(name)) != nil }
 
     init(
         useCases: CollectionUseCases,
@@ -79,6 +81,7 @@ final class CollectionEditorViewModel {
         isSaving = true
         defer { isSaving = false }
         saveError = nil
+        latestConflict = nil
         do {
             switch target {
             case .create(let id, let createdAt):
@@ -127,6 +130,4 @@ final class CollectionEditorViewModel {
         self.latestConflict = nil
         return await save(now: now)
     }
-
-    func clearSaveError() { saveError = nil }
 }

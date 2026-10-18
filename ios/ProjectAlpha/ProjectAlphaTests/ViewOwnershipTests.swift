@@ -311,15 +311,13 @@ final class ViewOwnershipTests: XCTestCase {
         ))
         try await assertRetained(factory: {
             HomeViewModel(
-                router: .init(root: .root),
                 repository: repository,
                 useCases: CollectionUseCases(repository: repository)
             )
         }, content: { HomeView(viewModel: $0, selection: .constant(nil)) })
         try await assertRetained(factory: {
-            MapViewModel(router: .init(root: .root), deviceLocationService: MapPresentationLocationService())
+            MapViewModel(deviceLocationService: MapPresentationLocationService())
         }, content: { MapView(viewModel: $0, rendersLiveMap: false) })
-        try await assertRetained(factory: { SettingsViewModel(router: .init(root: .root)) }, content: SettingsView.init)
     }
 
     func testLanguageChangesInvalidateObservedLocale() async {

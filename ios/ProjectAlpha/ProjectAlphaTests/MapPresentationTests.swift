@@ -448,7 +448,7 @@ struct MapPresentationTests {
         let fix = try makePosition()
         location.immediateResult = .success(fix)
         let geocoder = MapCardReverseGeocoder()
-        let model = MapViewModel(router: .init(root: .root), deviceLocationService: location,
+        let model = MapViewModel(deviceLocationService: location,
                                  reverseGeocodingService: geocoder)
         _ = await model.activate()
         let request = await geocoder.waitForRequest(1)
@@ -470,7 +470,7 @@ struct MapPresentationTests {
         let first = try makePosition()
         location.immediateResult = .success(first)
         let geocoder = MapCardReverseGeocoder()
-        let model = MapViewModel(router: .init(root: .root), deviceLocationService: location,
+        let model = MapViewModel(deviceLocationService: location,
                                  reverseGeocodingService: geocoder)
         _ = await model.activate()
         let oldRequest = await geocoder.waitForRequest(1)
@@ -498,7 +498,7 @@ struct MapPresentationTests {
         let location = MapPresentationLocationService(status: .authorizedWhenInUse)
         location.immediateResult = .success(try makePosition())
         let geocoder = MapCardReverseGeocoder()
-        let model = MapViewModel(router: .init(root: .root), deviceLocationService: location,
+        let model = MapViewModel(deviceLocationService: location,
                                  reverseGeocodingService: geocoder)
         model.updateAddressLocale(MapCardFixture.firstLocale)
         _ = await model.activate()
@@ -695,11 +695,17 @@ struct MapPresentationTests {
     }
 
     /// AC-24/37/60, D-17: at normal text size the short card must render
-    /// coordinates, both position facts and both actions for the reported address.
+    /// coordinates and both actions, omitting accuracy and position time.
     /// This is offscreen content evidence; glass, hit targets and map placement
     /// still require the independent device gate.
     @Test func shortCurrentPositionCardRendersAllFactsAndActions() throws {
         try assertCurrentPositionCardContent(height: MapCardRenderingFixture.shortHeight)
+    }
+
+    /// AC-24/37/60: a lower landscape card must retain the address, the
+    /// coordinate row and both actions, omitting accuracy and time.
+    @Test func compactLandscapeCardRendersAllFactsAndActions() throws {
+        try assertCurrentPositionCardContent(height: MapCardRenderingFixture.compactLandscapeHeight)
     }
 
     /// AC-24/37/60: adding a compact facts layout must preserve the ordinary
@@ -709,7 +715,7 @@ struct MapPresentationTests {
     }
 
     /// AC-24/37/60, D-17: the measured default-size template must fit two
-    /// complete title lines, two address lines and three inline metadata rows
+    /// complete title lines, two address lines and the inline coordinate row
     /// while exposing more map than the previous ordinary 320-point card.
     /// Offscreen rendering does not prove legal clearance or interactive targets.
     @Test func measuredInlineTemplateFitsTwoLineSummaryAndAllMetadata() throws {
@@ -810,14 +816,9 @@ struct MapPresentationTests {
         let visibleText = observations
             .compactMap { $0.topCandidates(1).first?.string }
             .joined(separator: MapCardRenderingFixture.textSeparator)
-        // Measurement formatting can select the simulator's system unit
-        // preference independently of the supplied text locale. Both rounded
-        // representations must still express the fixture's ten-metre accuracy.
-        let accuracyIsVisible = MapCardRenderingFixture.allowedAccuracyText
-            .contains { visibleText.contains($0) }
         var diagnostic = visibleText
         let expectedVisibleText = summaryText + MapCardRenderingFixture.expectedVisibleText
-        if !accuracyIsVisible || expectedVisibleText.contains(where: { !visibleText.contains($0) }) {
+        if expectedVisibleText.contains(where: { !visibleText.contains($0) }) {
             let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(
                 MapCardRenderingFixture.failureImagePrefix + UUID().uuidString
                     + MapCardRenderingFixture.imageExtension
@@ -828,14 +829,10 @@ struct MapPresentationTests {
         for expected in expectedVisibleText {
             #expect(visibleText.contains(expected), Comment(rawValue: diagnostic))
         }
-        #expect(accuracyIsVisible, Comment(rawValue: diagnostic))
-        let accuracyText = try #require(MapCardRenderingFixture.allowedAccuracyText.first {
-            visibleText.contains($0)
-        })
+        #expect(!visibleText.contains(MapCardRenderingFixture.accuracyLabel))
+        #expect(!visibleText.contains(MapCardRenderingFixture.timeLabel))
         let metadataPairs = [
             (MapCardRenderingFixture.coordinateLabel, MapCardRenderingFixture.latitudeText),
-            (MapCardRenderingFixture.accuracyLabel, accuracyText),
-            (MapCardRenderingFixture.timeLabel, MapCardRenderingFixture.timeText),
         ]
         for (label, value) in metadataPairs {
             let labelBounds = try recognizedBounds(of: label, in: observations, height: height)
@@ -894,7 +891,7 @@ struct MapPresentationTests {
     }
 
     private func makeModel(_ service: MapPresentationLocationService) -> MapViewModel {
-        MapViewModel(router: .init(root: .root), deviceLocationService: service)
+        MapViewModel(deviceLocationService: service)
     }
 
     private func makePosition(
@@ -937,12 +934,12 @@ private enum MapCardRenderingFixture {
     static let accuracyLabel = "Horizontal Accuracy"
     static let timeLabel = "Position Time"
     static let latitudeText = "10.780696"
-    static let timeText = "07:31"
     static let baselineTolerance: CGFloat = 4
     static let address = "Alley 457 Cach Mang Thang 8, Hoa Hung, Ho Chi Minh City, Vietnam"
     static let timestamp = Date(timeIntervalSince1970: 1_791_851_460)
     static let width: CGFloat = 360
     static let shortHeight: CGFloat = 218
+    static let compactLandscapeHeight: CGFloat = 206
     static let ordinaryHeight: CGFloat = 320
     static let locale = Locale(identifier: "en_GB")
     static let timeZone = TimeZone(secondsFromGMT: 7 * 60 * 60)!
@@ -952,11 +949,9 @@ private enum MapCardRenderingFixture {
     static let imageExtension = ".png"
     static let shortImageName = "current-position-short-card.png"
     static let ordinaryImageName = "current-position-ordinary-card.png"
-    static let allowedAccuracyText = ["10 m", "33 ft"]
     static let expectedVisibleText = [
         "Coordinates",
-        "10.780696", "106.674196", "Horizontal Accuracy",
-        "Position Time", "2026", "07:31", "View Details", "Open in Maps",
+        "10.780696", "106.674196", "View Details", "Open in Maps",
     ]
 }
 
@@ -1011,6 +1006,9 @@ final class MapPresentationLocationService: DeviceLocationService {
     var snapshot: LocationAuthorization
     var authorizationAfterRequest: LocationAuthorization?
     var immediateResult: Result<DevicePosition, LocationServiceError>?
+    var suspendsAuthorization = false
+    private var authorizationContinuations: [Int: CheckedContinuation<LocationAuthorization, Never>] = [:]
+    private var authorizationWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private(set) var authorizationCalls = 0
     private(set) var positionCalls = 0
     private var pending: [Int: CheckedContinuation<Result<DevicePosition, LocationServiceError>, Never>] = [:]
@@ -1022,7 +1020,14 @@ final class MapPresentationLocationService: DeviceLocationService {
 
     @MainActor func authorization() async -> LocationAuthorization {
         authorizationCalls += 1
-        return snapshot
+        guard suspendsAuthorization else { return snapshot }
+        let index = authorizationCalls
+        return await withCheckedContinuation { continuation in
+            authorizationContinuations[index] = continuation
+            let ready = authorizationWaiters.filter { $0.0 <= index }
+            authorizationWaiters.removeAll { $0.0 <= index }
+            for (_, waiter) in ready { waiter.resume() }
+        }
     }
 
     @MainActor func currentPosition() async throws(LocationServiceError) -> DevicePosition {
@@ -1040,6 +1045,15 @@ final class MapPresentationLocationService: DeviceLocationService {
             for (_, waiter) in waiters { waiter.resume() }
         }
         return try result.get()
+    }
+
+    func waitForAuthorization(_ count: Int) async {
+        if authorizationContinuations[count] != nil { return }
+        await withCheckedContinuation { authorizationWaiters.append((count, $0)) }
+    }
+
+    func completeAuthorization(_ count: Int) {
+        authorizationContinuations.removeValue(forKey: count)?.resume(returning: snapshot)
     }
 
     func waitForPositionRequest(_ count: Int) async {

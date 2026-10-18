@@ -24,7 +24,6 @@ struct AppRootView: View {
                     switch route {
                     case .root:
                         container.homeContainer.makeHomeView(
-                            router: coordinator.homeRouter,
                             repository: repository,
                             selection: selection
                         )
@@ -38,11 +37,11 @@ struct AppRootView: View {
                     }
                 } map: { route in
                     switch route {
-                    case .root: container.mapContainer.makeMapView(router: coordinator.mapRouter)
+                    case .root: container.mapContainer.makeMapView()
                     }
                 } settings: { route in
                     switch route {
-                    case .root: container.settingsContainer.makeSettingsView(router: coordinator.settingsRouter)
+                    case .root: container.settingsContainer.makeSettingsView()
                     }
                 }
             } else if libraryFailed {

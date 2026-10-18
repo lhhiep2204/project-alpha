@@ -201,8 +201,7 @@ struct MapPlaceSearchTests {
     @Test func staleAndCancelledLifecycleActivityCannotStopReopenedActiveSearch() async throws {
         let service = SearchTestService()
         let clock = SearchTestClock()
-        let owner = MapViewModel(router: Router<MapRoute>(root: .root),
-                                 deviceLocationService: SearchTestLocationService(),
+        let owner = MapViewModel(deviceLocationService: SearchTestLocationService(),
                                  placeSearchService: service, searchDebounceClock: clock)
         _ = owner.openPlaceSearch()
         let oldGeneration = owner.placeSearchGeneration
@@ -249,12 +248,11 @@ struct MapPlaceSearchTests {
 
     /// AC-19/58, INV-09: task identity belongs to one presentation, independent of released object addresses.
     @Test func presentationGenerationChangesOnlyForFreshOpeningAfterModelRelease() {
-        let owner = MapViewModel(router: Router<MapRoute>(root: .root),
-                                 deviceLocationService: SearchTestLocationService())
+        let owner = MapViewModel(deviceLocationService: SearchTestLocationService())
         let initial = owner.placeSearchGeneration
         #expect(owner.placeSearch == nil)
         var first: MapPlaceSearchModel? = owner.openPlaceSearch()
-        weak var weakFirst = first
+        let firstWasReleased = { [weak first] in first == nil }
         let opened = owner.placeSearchGeneration
         #expect(opened > initial)
         #expect(owner.openPlaceSearch() === first)
@@ -264,7 +262,7 @@ struct MapPlaceSearchTests {
         #expect(owner.placeSearchGeneration == opened)
         owner.dismissPlaceSearch()
         first = nil
-        #expect(weakFirst == nil)
+        #expect(firstWasReleased())
         let second = owner.openPlaceSearch()
         #expect(owner.placeSearchGeneration > opened)
         let reopened = owner.placeSearchGeneration
@@ -279,12 +277,11 @@ struct MapPlaceSearchTests {
     func actualDismissalReleasesModelAndRejectsLateWorkOnFreshReopening(boundary: Int) async throws {
         let service = SearchTestService()
         let clock = SearchTestClock()
-        let owner = MapViewModel(router: Router<MapRoute>(root: .root),
-                                 deviceLocationService: SearchTestLocationService(),
+        let owner = MapViewModel(deviceLocationService: SearchTestLocationService(),
                                  placeSearchService: service, searchDebounceClock: clock)
         #expect(owner.placeSearch == nil)
         var discarded: MapPlaceSearchModel? = owner.openPlaceSearch()
-        weak var weakDiscarded = discarded
+        let discardedWasReleased = { [weak discarded] in discarded == nil }
         #expect(owner.openPlaceSearch() === discarded)
         await discarded?.start(localeIdentifier: SearchFixture.locale, region: nil)
         let session = try #require(service.sessions.first)
@@ -312,7 +309,7 @@ struct MapPlaceSearchTests {
         #expect(discarded?.phase == .idle)
         #expect(discarded?.resolvedCandidate == nil)
         discarded = nil
-        #expect(weakDiscarded == nil)
+        #expect(discardedWasReleased())
         await session.waitForCancellation()
 
         let reopened = owner.openPlaceSearch()
@@ -392,8 +389,7 @@ struct MapPlaceSearchTests {
     @Test func mapDeactivationPausesOwnedSearchWithoutDiscardingQuery() async throws {
         let service = SearchTestService()
         let clock = SearchTestClock()
-        let owner = MapViewModel(router: Router<MapRoute>(root: .root),
-                                 deviceLocationService: SearchTestLocationService(),
+        let owner = MapViewModel(deviceLocationService: SearchTestLocationService(),
                                  placeSearchService: service, searchDebounceClock: clock)
         let search = owner.openPlaceSearch()
         await search.start(localeIdentifier: nil, region: nil)
@@ -415,7 +411,7 @@ struct MapPlaceSearchTests {
     /// AC-18/19, INV-09: later candidate selection supersedes an already pending explicit recenter.
     @Test func pendingExplicitRecenterCannotReplaceSelectedCandidateCamera() async throws {
         let service = SearchPendingLocationService()
-        let model = MapViewModel(router: Router<MapRoute>(root: .root), deviceLocationService: service)
+        let model = MapViewModel(deviceLocationService: service)
         _ = await model.activate()
         service.status = .authorizedWhenInUse
         let recenter = Task { await model.recenter() }
@@ -732,8 +728,7 @@ struct MapPlaceSearchTests {
 
     /// AC-18, INV-09: exact candidate metadata/identity and useful map zoom survive focus.
     @Test func selectedCandidatePreservesIdentityMetadataAndCameraZoom() throws {
-        let model = MapViewModel(router: Router<MapRoute>(root: .root),
-                                 deviceLocationService: SearchTestLocationService())
+        let model = MapViewModel(deviceLocationService: SearchTestLocationService())
         #expect(model.placeSearch == nil)
         let retainedSearch = model.openPlaceSearch()
         model.cameraPosition = .region(MKCoordinateRegion(
@@ -809,7 +804,7 @@ struct MapPlaceSearchTests {
     @Test func cancellingQueuedSearchPreservesCandidateSelection() throws {
         let scene = SceneCoordinator()
         scene.selectedTab = .map
-        let model = MapViewModel(router: scene.mapRouter,
+        let model = MapViewModel(
                                  deviceLocationService: SearchTestLocationService())
         let candidate = try SearchFixture.candidate(id: UUID())
         model.selectSearchCandidate(candidate)
@@ -835,7 +830,7 @@ struct MapPlaceSearchTests {
     @Test func successfulCandidateReplacementClosesOneSearchSheet() throws {
         let scene = SceneCoordinator()
         scene.selectedTab = .map
-        let model = MapViewModel(router: scene.mapRouter,
+        let model = MapViewModel(
                                  deviceLocationService: SearchTestLocationService())
         let previous = try SearchFixture.candidate(id: UUID())
         model.selectSearchCandidate(previous)

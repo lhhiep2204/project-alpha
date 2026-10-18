@@ -29,20 +29,16 @@ final class MapContainer {
         self.routeEstimationService = routeEstimationService
     }
 
-    /// The destination retains and cancels its own session; the factory holds no search state.
-    func makePlaceSearchSession(id: UUID) async -> any PlaceSearchSession {
-        await placeSearchService.makeSearchSession(id: id)
-    }
-
-    func makeMapView(
-        router: Router<MapRoute>
-    ) -> MapView {
+    func makeMapView() -> MapView {
         MapView(
             viewModel: MapViewModel(
-                router: router,
                 deviceLocationService: deviceLocationService,
                 placeSearchService: placeSearchService,
-                reverseGeocodingService: reverseGeocodingService
+                reverseGeocodingService: reverseGeocodingService,
+                routeEstimationService: routeEstimationService,
+                mapFeatureResolver: { feature async throws(PlaceServiceError) in
+                    try await AppleMapFeatureResolver.resolve(feature)
+                }
             )
         )
     }

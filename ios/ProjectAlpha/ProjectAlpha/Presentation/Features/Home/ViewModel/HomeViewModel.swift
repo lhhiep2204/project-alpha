@@ -16,7 +16,6 @@ final class HomeViewModel {
         case failed
     }
 
-    private let router: Router<HomeRoute>
     let repository: any CollectionRepository
     let useCases: CollectionUseCases
     private(set) var phase: Phase = .loading
@@ -33,11 +32,9 @@ final class HomeViewModel {
     private var localizedDefaultCollectionName = String()
 
     init(
-        router: Router<HomeRoute>,
         repository: any CollectionRepository,
         useCases: CollectionUseCases
     ) {
-        self.router = router
         self.repository = repository
         self.useCases = useCases
     }
@@ -66,10 +63,6 @@ final class HomeViewModel {
         } catch {
             if collections.isEmpty { phase = .failed }
         }
-    }
-
-    func open(_ summary: CollectionSummary) {
-        router.push(.collection(id: summary.id))
     }
 
     func delete(_ summary: CollectionSummary) async {

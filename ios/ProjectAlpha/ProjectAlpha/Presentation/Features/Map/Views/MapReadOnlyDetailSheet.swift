@@ -11,62 +11,28 @@ struct MapReadOnlyDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     let place: MapQuickPlace
     let onOpenInMaps: () -> Void
-
-    private var title: Text {
-        if let name = place.name { return Text(name) }
-        return Text(MapKeys.myLocation)
-    }
+    var route: MapRouteModel? = nil
+    var distanceUnit: DistanceUnit = .kilometre
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: MapDetailMetrics.rowSpacing) {
-                    LabeledContent {
-                        if let name = place.name {
-                            Text(name)
-                        } else {
-                            Text(MapKeys.myLocation)
-                        }
-                    } label: {
-                        Text(MapKeys.name)
+                VStack(alignment: .leading, spacing: MapDetailMetrics.sectionSpacing) {
+                    MapDetailPlaceHeader(name: place.name, address: place.address)
+
+                    if !place.isCurrentPosition {
+                        Divider()
+                        MapRouteSummaryView(state: route?.state ?? .noOrigin, distanceUnit: distanceUnit)
                     }
 
-                    LabeledContent {
-                        if let address = place.address, !address.isEmpty {
-                            Text(address)
-                        } else {
-                            Text(MapKeys.addressUnavailable)
-                        }
-                    } label: {
-                        Text(MapKeys.address)
-                    }
-
-                    LabeledContent {
-                        VStack(alignment: .trailing) {
-                            Text(place.coordinate.latitude, format: .number.precision(.fractionLength(MapDetailMetrics.coordinateDigits)))
-                            Text(place.coordinate.longitude, format: .number.precision(.fractionLength(MapDetailMetrics.coordinateDigits)))
-                        }
-                    } label: {
-                        Text(MapKeys.coordinates)
-                    }
-
-                    if let accuracy = place.horizontalAccuracyMetres,
-                       let timestamp = place.timestamp {
-                        LabeledContent {
-                            Text(Measurement(value: accuracy, unit: UnitLength.meters), format: .measurement(width: .abbreviated))
-                        } label: {
-                            Text(MapKeys.horizontalAccuracy)
-                        }
-                        LabeledContent {
-                            Text(timestamp, format: .dateTime.day().month().year().hour().minute())
-                        } label: {
-                            Text(MapKeys.positionTimestamp)
-                        }
-                    }
+                    Divider()
+                    MapDetailCoordinates(coordinate: place.coordinate)
                 }
-                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(MapDetailMetrics.contentPadding)
+                .textSelection(.enabled)
             }
-            .navigationTitle(title)
+            .navigationTitle(Text(MapKeys.viewDetails))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .bottomBar) {
@@ -81,9 +47,66 @@ struct MapReadOnlyDetailSheet: View {
     }
 }
 
+private struct MapDetailPlaceHeader: View {
+    let name: String?
+    let address: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MapDetailMetrics.rowSpacing) {
+            Group {
+                if let name { Text(verbatim: name) }
+                else { Text(MapKeys.myLocation) }
+            }
+            .font(.title2.weight(.semibold))
+            .accessibilityAddTraits(.isHeader)
+
+            Group {
+                if let address, !address.isEmpty { Text(verbatim: address) }
+                else { Text(MapKeys.addressUnavailable) }
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct MapDetailCoordinates: View {
+    let coordinate: Coordinate
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MapDetailMetrics.rowSpacing) {
+            Text(MapKeys.coordinates).foregroundStyle(.secondary)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: MapDetailMetrics.coordinateSpacing) {
+                    latitude
+                    longitude
+                }
+                VStack(alignment: .leading, spacing: MapDetailMetrics.rowSpacing) {
+                    latitude
+                    longitude
+                }
+            }
+        }
+        .font(MapPlaceTypography.fact)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var latitude: some View {
+        Text(coordinate.latitude, format: .number.precision(.fractionLength(MapDetailMetrics.coordinateDigits)))
+    }
+
+    private var longitude: some View {
+        Text(coordinate.longitude, format: .number.precision(.fractionLength(MapDetailMetrics.coordinateDigits)))
+    }
+}
+
 private enum MapDetailMetrics {
     static let coordinateDigits = 6
-    static let rowSpacing: CGFloat = 16
+    static let rowSpacing: CGFloat = 8
+    static let coordinateSpacing: CGFloat = 12
+    static let sectionSpacing: CGFloat = 20
+    static let contentPadding: CGFloat = 20
 }
 
 private enum MapDetailAccessibility {
@@ -96,4 +119,18 @@ private enum MapDetailAccessibility {
 
 #Preview {
     MapReadOnlyDetailSheet(place: MapQuickPlacePreviewFixtures.currentPlace, onOpenInMaps: {})
+        .environment(\.dynamicTypeSize, .accessibility3)
+}
+
+#Preview {
+    MapDetailPlaceHeader(
+        name: MapQuickPlacePreviewFixtures.searchPlace.name,
+        address: MapQuickPlacePreviewFixtures.searchPlace.address
+    )
+    .padding()
+}
+
+#Preview {
+    MapDetailCoordinates(coordinate: MapQuickPlacePreviewFixtures.searchPlace.coordinate)
+        .padding()
 }
