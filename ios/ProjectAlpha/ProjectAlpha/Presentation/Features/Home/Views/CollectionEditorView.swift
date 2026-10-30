@@ -13,6 +13,7 @@ struct CollectionEditorView: View {
         case clearName
     }
 
+    @Environment(DSToastManager.self) private var toastManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
     @State private var viewModel: CollectionEditorViewModel
@@ -36,12 +37,12 @@ struct CollectionEditorView: View {
         )))
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button(CommonKeys.cancel) { cancel() }
+                DSButton(CommonKeys.cancel) { cancel() }
                     .disabled(viewModel.isSaving)
                     .keyboardShortcut(.cancelAction)
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button(CommonKeys.save) {
+                DSButton(CommonKeys.save) {
                     Task { await save() }
                 }
                 .disabled(viewModel.isSaving)
@@ -53,24 +54,24 @@ struct CollectionEditorView: View {
             Text(CollectionKeys.discardChangesTitle),
             isPresented: $showDiscardConfirmation
         ) {
-            Button(role: .destructive) {
+            DSButton(role: .destructive) {
                 discardAndDismiss()
             } label: {
                 Text(CollectionKeys.discardChanges)
             }
-            Button(role: .cancel) {} label: { Text(CollectionKeys.keepEditing) }
+            DSButton(role: .cancel) {} label: { Text(CollectionKeys.keepEditing) }
         } message: {
             Text(CollectionKeys.discardChangesMessage)
         }
         .alert(Text(CollectionKeys.conflictTitle), isPresented: $showConflict) {
-            Button(CollectionKeys.reload) { showReloadConfirmation = true }
-            Button(CollectionKeys.reapply) {
+            DSButton(CollectionKeys.reload) { showReloadConfirmation = true }
+            DSButton(CollectionKeys.reapply) {
                 Task {
-                    if await viewModel.reapply() { dismiss() }
+                    if await viewModel.reapply() { finishSave() }
                     else { presentSaveResult() }
                 }
             }
-            Button(role: .cancel) {} label: { Text(CommonKeys.cancel) }
+            DSButton(role: .cancel) {} label: { Text(CommonKeys.cancel) }
         } message: {
             if let latest = viewModel.latestConflict {
                 Text(verbatim: CollectionKeys.conflictComparisonMessage(
@@ -86,18 +87,18 @@ struct CollectionEditorView: View {
             Text(CollectionKeys.discardChangesTitle),
             isPresented: $showReloadConfirmation
         ) {
-            Button(role: .destructive) { viewModel.reloadFromConflict() } label: {
+            DSButton(role: .destructive) { viewModel.reloadFromConflict() } label: {
                 Text(CollectionKeys.reload)
             }
-            Button(role: .cancel) {} label: { Text(CollectionKeys.keepEditing) }
+            DSButton(role: .cancel) {} label: { Text(CollectionKeys.keepEditing) }
         } message: {
             Text(CollectionKeys.discardChangesMessage)
         }
         .alert(Text(saveFailureTitle), isPresented: $showSaveFailure) {
             if viewModel.saveError == .failed {
-                Button(CollectionKeys.retry) { Task { await save() } }
+                DSButton(CollectionKeys.retry) { Task { await save() } }
             }
-            Button(role: .cancel) {} label: { Text(CommonKeys.cancel) }
+            DSButton(role: .cancel) {} label: { Text(CommonKeys.cancel) }
         }
     }
 
@@ -114,7 +115,7 @@ struct CollectionEditorView: View {
             .padding(.trailing, focusedElement != nil && !viewModel.name.isEmpty ? 44 : 0)
             .overlay(alignment: .trailing) {
                 if focusedElement != nil && !viewModel.name.isEmpty {
-                    Button {
+                    DSButton {
                         focusedElement = .name
                         viewModel.name.removeAll()
                     } label: {
@@ -173,8 +174,13 @@ struct CollectionEditorView: View {
     }
 
     private func save() async {
-        if await viewModel.save() { dismiss() }
+        if await viewModel.save() { finishSave() }
         else { presentSaveResult() }
+    }
+
+    private func finishSave() {
+        toastManager.show(CollectionKeys.saveSucceeded)
+        dismiss()
     }
 
     private func presentSaveResult() {
@@ -192,5 +198,6 @@ struct CollectionEditorView: View {
             useCases: CollectionUseCases(repository: repository),
             target: .edit(.mock)
         ))
+        .environment(DSToastManager())
     }
 }

@@ -914,7 +914,7 @@ struct CollectionPresentationTests {
         home.searchText = CollectionTestValue.searchText
         #expect(home.visibleCollections.map(\.id) == [trip.collection.id])
         let tripRow = try #require(home.visibleCollections.first { $0.id == trip.collection.id })
-        await home.delete(tripRow)
+        #expect(await home.delete(tripRow))
         #expect(home.visibleCollections.isEmpty)
         #expect(home.searchText == CollectionTestValue.searchText)
         #expect(home.collections.contains { $0.id == work.collection.id })
@@ -932,7 +932,7 @@ struct CollectionPresentationTests {
         failingHome.searchText = CollectionTestValue.workName
         #expect(failingHome.visibleCollections.map(\.id) == [work.collection.id])
         let workRow = try #require(failingHome.visibleCollections.first { $0.id == work.collection.id })
-        await failingHome.delete(workRow)
+        #expect(await failingHome.delete(workRow) == false)
         #expect(failingHome.visibleCollections.map(\.id) == [work.collection.id])
         #expect(failingHome.searchText == CollectionTestValue.workName)
         #expect(failingHome.deletionError)

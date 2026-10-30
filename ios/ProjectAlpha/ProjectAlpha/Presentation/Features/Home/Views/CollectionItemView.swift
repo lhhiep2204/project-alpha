@@ -18,7 +18,7 @@ struct CollectionItemView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: DSRadius.xxLarge)
                     .fill(.gray.opacity(0.15))
-                    .frame(width: DSSpacing.huge + DSSpacing.xSmall, height: DSSpacing.huge + DSSpacing.xSmall)
+                    .frame(width: DSSize.huge, height: DSSize.huge)
 
                 Image.appSystemIcon(.folder)
                     .accessibilityHidden(true)

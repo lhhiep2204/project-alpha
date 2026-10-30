@@ -32,6 +32,9 @@ enum CommonKeys: String, CaseIterable, LocalizedKey {
     case edit = "Edit"
     case error = "Error"
 
+    // MARK: - M
+    case moreActions = "More Actions"
+
     // MARK: - N
     case next = "Next"
 

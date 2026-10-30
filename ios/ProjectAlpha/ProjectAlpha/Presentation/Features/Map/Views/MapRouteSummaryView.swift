@@ -26,10 +26,7 @@ struct MapRouteSummaryView: View {
                 routeLine(mode: mode) {
                     Text(MapKeys.routeCalculating)
                 }
-            case let .unavailable(distance, mode):
-                routeLine(mode: mode) {
-                    Text(MapKeys.routeUnavailable)
-                }
+            case let .unavailable(distance, _):
                 straightLine(distance)
             case let .available(_, estimate):
                 routeLine(mode: estimate.mode) {
@@ -107,7 +104,7 @@ enum MapRoutePreviewFixtures {
         computedAt: Date(timeIntervalSince1970: 1_791_792_000)
     )
     static let available = MapRouteState.available(distanceMetres: distanceMetres, estimate: estimate)
-    // The fallback has two rows; reserve them even when a successful route uses one.
+    // The labeled fallback reserves space for the longest travel summary.
     static let unavailable = MapRouteState.unavailable(distanceMetres: distanceMetres, mode: .walking)
 }
 

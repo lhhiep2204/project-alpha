@@ -854,4 +854,5 @@ struct MapPlaceSearchTests {
         #expect(model.cameraPosition.region?.center.latitude == replacement.coordinate.latitude)
         #expect(model.cameraPosition.region?.center.longitude == replacement.coordinate.longitude)
     }
+
 }

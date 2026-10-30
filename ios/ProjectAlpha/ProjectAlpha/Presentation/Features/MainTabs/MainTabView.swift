@@ -112,9 +112,20 @@ private struct HomeNavigationView<Destination: View>: View {
 
     private var selection: Binding<HomeRoute?> {
         Binding(
-            get: { router.paths.last },
+            get: { router.paths.first },
             set: { route in
+                if let route, router.paths.first == route { return }
                 router.paths = route.map { [$0] } ?? []
+            }
+        )
+    }
+
+    private var detailPath: Binding<[HomeRoute]> {
+        Binding(
+            get: { Array(router.paths.dropFirst()) },
+            set: { nested in
+                guard let root = router.paths.first else { return }
+                router.paths = [root] + nested
             }
         )
     }
@@ -124,7 +135,12 @@ private struct HomeNavigationView<Destination: View>: View {
             destination(.root, selection)
         } detail: {
             if let route = selection.wrappedValue {
-                destination(route, selection)
+                NavigationStack(path: detailPath) {
+                    destination(route, selection)
+                        .navigationDestination(for: HomeRoute.self) { nested in
+                            destination(nested, selection)
+                        }
+                }
             } else {
                 ContentUnavailableView(
                     LocalizedStringKey(CollectionKeys.selectCollection.rawValue),
@@ -167,6 +183,8 @@ private struct HomeNavigationView<Destination: View>: View {
             }
         case .collection:
             Text(CollectionKeys.emptyCollectionTitle)
+        case .collectionMap:
+            Text(MainTab.map.title)
         }
     }
 }

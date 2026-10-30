@@ -48,6 +48,22 @@ struct MapCardLayout: Equatable {
             : available
     }
 
+    var carouselViewportWidth: CGFloat {
+        guard cardAtLeading else { return max(0, size.width) }
+        let fullWidth = cardWidth + 2 * Self.edgePadding
+        return min(fullWidth, max(0, size.width) * MapCarouselMetrics.maximumViewportFraction)
+    }
+
+    /// All collection items share one width, including the temporary first
+    /// item. Reserve room inside the viewport for the next item in every size.
+    func carouselCardWidth(itemCount: Int) -> CGFloat {
+        let available = max(0, carouselViewportWidth - 2 * Self.edgePadding)
+        guard itemCount > 1 else { return available }
+        return min(available, max(MapCarouselMetrics.minimumItemWidth,
+                                  available * MapCarouselMetrics.minimumItemFraction,
+                                  available - MapCarouselMetrics.peekWidth))
+    }
+
     var cardBottomInset: CGFloat {
         Self.estimatedAttributionTopInset + Self.legalGap
     }
@@ -66,6 +82,17 @@ struct MapCardLayout: Equatable {
             ? Self.edgePadding
             : Self.upperControlHeight + 2 * Self.edgePadding
     }
+}
+
+enum MapCarouselMetrics {
+    static let selectedCardOpacity = 1.0
+    static let unselectedCardOpacity = 0.6
+    static let spacing: CGFloat = 12
+    static let peekWidth: CGFloat = 28
+    static let maximumViewportFraction: CGFloat = 0.5
+    static let minimumItemFraction: CGFloat = 0.5
+    // Two 44-point action targets, their 8-point gap and 12-point card padding.
+    static let minimumItemWidth: CGFloat = 120
 }
 
 private enum MapCardLayoutMetrics {

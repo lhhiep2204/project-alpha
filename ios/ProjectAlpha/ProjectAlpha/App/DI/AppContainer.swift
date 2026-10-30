@@ -20,10 +20,14 @@ final class AppContainer {
     let routeEstimationService: any RouteEstimationService
     private let libraryProvider = LibraryRepositoryProvider()
     private let collectionRepositoryOverride: (any CollectionRepository)?
+    private let locationRepositoryOverride: (any LocationRepository)?
+    private let mediaServiceOverride: (any LocationMediaService)?
 
     init(
         preferenceStore: any PreferenceStore,
         collectionRepositoryOverride: (any CollectionRepository)? = nil,
+        locationRepositoryOverride: (any LocationRepository)? = nil,
+        mediaServiceOverride: (any LocationMediaService)? = nil,
         deviceLocationServiceOverride: (any DeviceLocationService)? = nil,
         placeSearchServiceOverride: (any PlaceSearchService)? = nil,
         placeIdentityResolutionServiceOverride: (any PlaceIdentityResolutionService)? = nil,
@@ -53,6 +57,25 @@ final class AppContainer {
         )
         settingsContainer = SettingsContainer()
         self.collectionRepositoryOverride = collectionRepositoryOverride
+        self.locationRepositoryOverride = locationRepositoryOverride
+        self.mediaServiceOverride = mediaServiceOverride
+    }
+
+    func locationRepository() async throws -> any LocationRepository {
+        if let locationRepositoryOverride { return locationRepositoryOverride }
+        guard collectionRepositoryOverride == nil else { throw LocationWriteError.storageUnavailable }
+        return try await libraryProvider.locationRepository()
+    }
+
+    func locationMediaService() async throws -> (any LocationMediaService)? {
+        if let mediaServiceOverride { return mediaServiceOverride }
+        guard collectionRepositoryOverride == nil else { return nil }
+        return try await libraryProvider.mediaService()
+    }
+
+    func performLibraryMaintenance() async {
+        guard collectionRepositoryOverride == nil else { return }
+        await libraryProvider.performMaintenance()
     }
 
     func collectionRepository() async throws -> any CollectionRepository {
@@ -63,13 +86,33 @@ final class AppContainer {
 
 /// Serializes the one-time disk store open across all scenes without blocking the UI actor.
 private actor LibraryRepositoryProvider {
-    private var repository: (any CollectionRepository)?
+    private var store: LibraryStore?
+    private var media: LocalLocationMediaService?
+
+    private func openedStore() throws -> LibraryStore {
+        if let store { return store }
+        let store = LibraryStore(container: try LibraryStoreConfiguration.makeContainer())
+        self.store = store
+        return store
+    }
 
     func collectionRepository() throws -> any CollectionRepository {
-        if let repository { return repository }
-        let store = LibraryStore(container: try LibraryStoreConfiguration.makeContainer())
-        let repository = SwiftDataCollectionRepository(store: store)
-        self.repository = repository
-        return repository
+        SwiftDataCollectionRepository(store: try openedStore())
+    }
+
+    func locationRepository() throws -> any LocationRepository {
+        SwiftDataLocationRepository(store: try openedStore())
+    }
+
+    func performMaintenance() async {
+        // Called only after the usable library is published to the scene.
+        try? await media?.startMaintenance()
+    }
+
+    func mediaService() async throws -> any LocationMediaService {
+        if let media { return media }
+        let service = LocalLocationMediaService(store: try openedStore())
+        media = service
+        return service
     }
 }

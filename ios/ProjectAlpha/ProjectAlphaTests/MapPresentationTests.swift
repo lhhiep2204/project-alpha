@@ -568,6 +568,83 @@ struct MapPresentationTests {
         #expect(model.selectedCandidate?.id == candidate.id)
     }
 
+    /// AC-24/56/58: multiple items reveal only part of a neighbor in every
+    /// geometry and reading direction; wide viewports include their margins
+    /// within half the available map, leaving the remaining map interactive.
+    @Test func collectionCarouselPeeksAcrossAvailableGeometries() {
+        let sizes = [CGSize(width: 400, height: 700), CGSize(width: 700, height: 400),
+                     CGSize(width: 600, height: 300), CGSize(width: 1_000, height: 650),
+                     CGSize(width: 320, height: 500), CGSize(width: 500, height: 320)]
+        for size in sizes {
+            for regularWidth in [false, true] {
+                for leadingIsPhysicalLeft in [false, true] {
+                    let layout = MapCardLayout(size: size, regularWidth: regularWidth,
+                                               leadingIsPhysicalLeft: leadingIsPhysicalLeft)
+                    let viewport = layout.carouselViewportWidth
+                    let width = layout.carouselCardWidth(itemCount: 2)
+                    let usable = viewport - 2 * MapCardLayout.edgePadding
+                    let visibleNeighbor = viewport - MapCardLayout.edgePadding - width - MapCarouselMetrics.spacing
+                    #expect(visibleNeighbor > 0)
+                    #expect(visibleNeighbor < width)
+                    #expect(width >= usable / 2)
+                    #expect(width >= MapCarouselMetrics.minimumItemWidth)
+                    #expect(width < usable)
+                    #expect(width == layout.carouselCardWidth(itemCount: 5))
+                    if layout.cardAtLeading { #expect(viewport <= size.width / 2) }
+                    else { #expect(viewport == size.width) }
+                    #expect(layout.carouselCardWidth(itemCount: 1) == usable)
+                    #expect(layout.carouselCardWidth(itemCount: 1) <= layout.cardWidth)
+                }
+            }
+        }
+    }
+
+    /// Moving content stays inside its viewport with fully visible edges.
+    /// Sample both reading directions to catch overflow and residual fading.
+    @Test func carouselViewportContainsMovingContentWithoutEdgeFade() throws {
+        for width: CGFloat in [200, 350, 400] {
+            for layoutDirection in [LayoutDirection.leftToRight, .rightToLeft] {
+                for offset: CGFloat in [-80, 0, 80] {
+                    let padding: CGFloat = 8
+                    let height: CGFloat = 40
+                    let content = Color(red: 1, green: 0, blue: 0)
+                        .frame(width: width * 3, height: height)
+                        .offset(x: offset)
+                        .modifier(MapCarouselViewport(width: width, height: height))
+                        .environment(\.layoutDirection, layoutDirection)
+                        .padding(padding)
+                        .background(.white)
+                    let renderer = ImageRenderer(content: content)
+                    renderer.scale = 1
+                    let image = try #require(renderer.cgImage)
+                    #expect(image.width == Int(width + padding * 2))
+                    #expect(image.height == Int(height + padding * 2))
+                    if width == 200, layoutDirection == .leftToRight, offset == 0 {
+                        let png = try #require(UIImage(cgImage: image).pngData())
+                        Attachment.record(Array(png), named: MapCarouselRenderingFixture.imageName)
+                    }
+                    var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
+                    try pixels.withUnsafeMutableBytes { bytes in
+                        let context = try #require(CGContext(
+                            data: bytes.baseAddress, width: image.width, height: image.height,
+                            bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                            space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                        ))
+                        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+                    }
+                    func green(at x: CGFloat) -> UInt8 {
+                        pixels[(image.height / 2 * image.width + Int(x)) * 4 + 1]
+                    }
+                    #expect(green(at: padding - 1) == 255)
+                    #expect(green(at: padding + width + 1) == 255)
+                    #expect(green(at: padding + 1) == 0)
+                    #expect(green(at: padding + width - 2) == 0)
+                }
+            }
+        }
+    }
+
     /// AC-24/60: default-size full-template measurement determines the card
     /// height, rather than all unused map height. Actual font/content rendering
     /// and sharing the measurement across card types are UI/device gates.
@@ -694,18 +771,16 @@ struct MapPresentationTests {
         }
     }
 
-    /// AC-24/37/60, D-17: at normal text size the short card must render
-    /// coordinates and both actions, omitting accuracy and position time.
-    /// This is offscreen content evidence; glass, hit targets and map placement
-    /// still require the independent device gate.
-    @Test func shortCurrentPositionCardRendersAllFactsAndActions() throws {
-        try assertCurrentPositionCardContent(height: MapCardRenderingFixture.shortHeight)
+    /// AC-24/44/60, D-17: constrained cards retain the title without visible action labels.
+    /// Full-template content is asserted separately at its measured height.
+    /// Offscreen opaque rendering does not prove glass, hit targets or legal clearance.
+    @Test func shortCurrentPositionCardRetainsPrioritySaveActions() throws {
+        try assertCurrentPositionCardContent(height: MapCardRenderingFixture.shortHeight, priorityOnly: true)
     }
 
-    /// AC-24/37/60: a lower landscape card must retain the address, the
-    /// coordinate row and both actions, omitting accuracy and time.
-    @Test func compactLandscapeCardRendersAllFactsAndActions() throws {
-        try assertCurrentPositionCardContent(height: MapCardRenderingFixture.compactLandscapeHeight)
+    /// AC-24/44/60: low landscape height may omit lower-priority facts while saving stays discoverable.
+    @Test func compactLandscapeCardRetainsPrioritySaveActions() throws {
+        try assertCurrentPositionCardContent(height: MapCardRenderingFixture.compactLandscapeHeight, priorityOnly: true)
     }
 
     /// AC-24/37/60: adding a compact facts layout must preserve the ordinary
@@ -731,7 +806,8 @@ struct MapPresentationTests {
             place: place, width: MapCardRenderingFixture.width,
             height: MapCardRenderingFixture.ordinaryHeight,
             onClose: {}, onOpenInMaps: {}, onViewDetails: {},
-            onReferenceHeightChange: { referenceHeight = $0 }
+            onReferenceHeightChange: { referenceHeight = $0 },
+            canSave: true, surfaceStyle: .opaque
         )
         .environment(\.dynamicTypeSize, .large)
         .environment(\.locale, MapCardRenderingFixture.locale)
@@ -776,7 +852,8 @@ struct MapPresentationTests {
         height: CGFloat,
         name: String? = nil,
         address: String = MapCardRenderingFixture.address,
-        summaryText: [String] = MapCardRenderingFixture.defaultSummaryText
+        summaryText: [String] = MapCardRenderingFixture.defaultSummaryText,
+        priorityOnly: Bool = false
     ) throws {
         let place = MapQuickPlace(
             id: .currentPosition, name: name, address: address,
@@ -787,7 +864,8 @@ struct MapPresentationTests {
         let card = MapQuickPlaceCard(
             place: place, width: MapCardRenderingFixture.width, height: height,
             onClose: {}, onOpenInMaps: {}, onViewDetails: {},
-            onReferenceHeightChange: { _ in }
+            onReferenceHeightChange: { _ in },
+            canSave: true, surfaceStyle: .opaque
         )
         .environment(\.dynamicTypeSize, .large)
         .environment(\.locale, MapCardRenderingFixture.locale)
@@ -817,7 +895,8 @@ struct MapPresentationTests {
             .compactMap { $0.topCandidates(1).first?.string }
             .joined(separator: MapCardRenderingFixture.textSeparator)
         var diagnostic = visibleText
-        let expectedVisibleText = summaryText + MapCardRenderingFixture.expectedVisibleText
+        let expectedVisibleText = priorityOnly ? MapCardRenderingFixture.priorityVisibleText
+            : summaryText + MapCardRenderingFixture.expectedVisibleText
         if expectedVisibleText.contains(where: { !visibleText.contains($0) }) {
             let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(
                 MapCardRenderingFixture.failureImagePrefix + UUID().uuidString
@@ -829,9 +908,15 @@ struct MapPresentationTests {
         for expected in expectedVisibleText {
             #expect(visibleText.contains(expected), Comment(rawValue: diagnostic))
         }
+        for removedContext in MapCardRenderingFixture.sheetOnlyContextText {
+            #expect(!visibleText.contains(removedContext), Comment(rawValue: diagnostic))
+        }
+        for removedLabel in MapCardRenderingFixture.removedVisibleActionLabels {
+            #expect(!visibleText.contains(removedLabel), Comment(rawValue: diagnostic))
+        }
         #expect(!visibleText.contains(MapCardRenderingFixture.accuracyLabel))
         #expect(!visibleText.contains(MapCardRenderingFixture.timeLabel))
-        let metadataPairs = [
+        let metadataPairs = priorityOnly ? [] : [
             (MapCardRenderingFixture.coordinateLabel, MapCardRenderingFixture.latitudeText),
         ]
         for (label, value) in metadataPairs {
@@ -843,7 +928,7 @@ struct MapPresentationTests {
                     Comment(rawValue: diagnostic))
             #expect(valueBounds.minX > labelBounds.minX, Comment(rawValue: diagnostic))
         }
-        if summaryText == MapCardRenderingFixture.twoLineSummaryText {
+        if !priorityOnly, summaryText == MapCardRenderingFixture.twoLineSummaryText {
             let lines = try summaryText.map {
                 try recognizedBounds(of: $0, in: observations, height: height)
             }
@@ -909,6 +994,10 @@ struct MapPresentationTests {
     }
 }
 
+private enum MapCarouselRenderingFixture {
+    static let imageName = "map-carousel-viewport.png"
+}
+
 private enum MapCardFixture {
     static let name = "Card Search Result"
     static let address = "Card Address"
@@ -949,9 +1038,11 @@ private enum MapCardRenderingFixture {
     static let imageExtension = ".png"
     static let shortImageName = "current-position-short-card.png"
     static let ordinaryImageName = "current-position-ordinary-card.png"
+    static let removedVisibleActionLabels = ["Details", "Add", "Edit", "Maps"]
+    static let sheetOnlyContextText = ["Save to", "Add Details"]
+    static let priorityVisibleText = ["My Location"]
     static let expectedVisibleText = [
-        "Coordinates",
-        "10.780696", "106.674196", "View Details", "Open in Maps",
+        "Coordinates", "10.780696", "106.674196",
     ]
 }
 

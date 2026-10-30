@@ -7,9 +7,24 @@
 
 import SwiftUI
 
+/// Explicit opaque rendering also supports deterministic offscreen previews/tests.
+/// Shipping callers retain system accessibility behavior through the default case.
+enum MapCardSurfaceStyle { case system, opaque }
+
+/// Actions use the map session's existing detail payload and mutation owner.
+struct MapQuickCardActionConfiguration {
+    let payload: LocationDetailPayload
+    let isFavorite: Bool
+    let canMutate: Bool
+    let onFavorite: () -> Void
+    let onDelete: () -> Void
+    let onCopied: (LocationKeys) -> Void
+}
+
 struct MapQuickPlaceCard: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.locale) private var locale
+    @State private var detailFeedback = false
     let place: MapQuickPlace
     let width: CGFloat
     let height: CGFloat
@@ -19,25 +34,53 @@ struct MapQuickPlaceCard: View {
     let onReferenceHeightChange: (CGFloat) -> Void
     var route: MapRouteModel? = nil
     var distanceUnit: DistanceUnit = .kilometre
+    var showsClose: Bool? = nil
+    private var displaysClose: Bool { showsClose ?? !place.isCurrentPosition }
+    var isSaved = false
+    var isSaving = false
+    var canSave = false
+    var onSave: () -> Void = {}
+    var surfaceStyle: MapCardSurfaceStyle = .system
+    var detailActions: MapQuickCardActionConfiguration? = nil
+    private var usesOpaqueSurface: Bool { surfaceStyle == .opaque || reduceTransparency }
 
     var body: some View {
         let contentPadding = MapQuickCardMetrics.contentPadding
 
-        return ViewThatFits(in: .vertical) {
-            cardContent(.all, includesMaps: true)
-            cardContent(.all, includesMaps: false)
-            cardContent(.route, includesMaps: true)
-            cardContent(.route, includesMaps: false)
-            cardContent(.address, includesMaps: true)
-            cardContent(.address, includesMaps: false)
-            cardContent(.title, includesMaps: true)
-            cardContent(.title, includesMaps: false)
-            cardContent(.none, includesMaps: true)
-            cardContent(.none, includesMaps: false)
+        return ZStack {
+            Button(action: showDetails) {
+                ViewThatFits(in: .vertical) {
+                    cardContent(.all)
+                    cardContent(.route)
+                    cardContent(.address)
+                    cardContent(.title)
+                    cardContent(.none)
+                }
+                .frame(width: max(0, width - 2 * MapQuickCardMetrics.contentPadding),
+                       height: max(0, height - 2 * MapQuickCardMetrics.contentPadding))
+                .padding(MapQuickCardMetrics.contentPadding)
+                .frame(width: max(0, width), height: max(0, height))
+                .background(
+                    usesOpaqueSurface ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
+                    in: RoundedRectangle(cornerRadius: MapQuickCardMetrics.cornerRadius)
+                )
+                .glassEffect(
+                    usesOpaqueSurface ? .identity : .regular,
+                    in: .rect(cornerRadius: MapQuickCardMetrics.cornerRadius)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: MapQuickCardMetrics.cornerRadius))
+            }
+            .buttonStyle(MapQuickCardTapStyle())
+            .accessibilityRepresentation {
+                VStack(alignment: .leading) {
+                    Button(action: showDetails) { Text(MapKeys.viewDetails) }
+                        .buttonStyle(.automatic)
+                        .accessibilityIdentifier(MapQuickCardAccessibility.details)
+                    placeFacts(reference: false)
+                }
+            }
+            .sensoryFeedback(.impact(weight: .light), trigger: detailFeedback)
         }
-        .frame(width: max(0, width - 2 * MapQuickCardMetrics.contentPadding),
-               height: max(0, height - 2 * MapQuickCardMetrics.contentPadding))
-        .padding(MapQuickCardMetrics.contentPadding)
         .background {
             referenceTemplate
                 .frame(width: max(0, width - 2 * MapQuickCardMetrics.contentPadding))
@@ -54,22 +97,22 @@ struct MapQuickPlaceCard: View {
                 .accessibilityHidden(true)
         }
         .overlay(alignment: .topTrailing) {
-            if !place.isCurrentPosition {
+            if displaysClose {
                 closeButton.padding(MapQuickCardMetrics.contentPadding)
             }
         }
-        .background(
-            reduceTransparency ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
-            in: RoundedRectangle(cornerRadius: MapQuickCardMetrics.cornerRadius)
-        )
-        .glassEffect(
-            reduceTransparency ? .identity : .regular,
-            in: .rect(cornerRadius: MapQuickCardMetrics.cornerRadius)
-        )
-        .accessibilityIdentifier(MapQuickCardAccessibility.card)
+        .overlay(alignment: .bottomLeading) {
+            actionButtons.padding(MapQuickCardMetrics.contentPadding)
+        }
+        .accessibilityElement(children: .contain)
     }
 
-    private func cardContent(_ level: MapQuickCardContentLevel, includesMaps: Bool) -> some View {
+    private func showDetails() {
+        detailFeedback.toggle()
+        onViewDetails()
+    }
+
+    private func cardContent(_ level: MapQuickCardContentLevel) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Group {
                 switch level {
@@ -81,16 +124,16 @@ struct MapQuickPlaceCard: View {
                     }
                 case .address: placeSummary
                 case .title:
-                    placeTitle.frame(minHeight: place.isCurrentPosition ? 0 : MapQuickCardMetrics.minimumTarget, alignment: .topLeading)
+                    placeTitle.frame(minHeight: displaysClose ? MapQuickCardMetrics.minimumTarget : 0, alignment: .topLeading)
                 case .none: Color.clear.frame(height: closeTextReservation > 0 ? MapQuickCardMetrics.minimumTarget : 0)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
+            .allowsHitTesting(false)
             Spacer(minLength: level == .none ? 0 : MapQuickCardMetrics.factsToActionsSpacing)
-            Group {
-                if includesMaps { actionButtons } else { detailsButton }
-            }
-            .fixedSize(horizontal: false, vertical: true)
+            // Foreground controls are siblings of the detail Button, never nested
+            // in its label. Reserve their existing fixed target height here.
+            Color.clear.frame(height: MapQuickCardMetrics.minimumTarget)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -166,13 +209,13 @@ struct MapQuickPlaceCard: View {
                     Text(address)
                 }
             }
-            .font(.subheadline.weight(.medium))
+            .font(.subheadline.bold())
             .foregroundStyle(.secondary)
             .lineLimit(2, reservesSpace: reference)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.trailing, reference ? MapQuickCardMetrics.minimumTarget + MapQuickCardMetrics.spacing : closeTextReservation)
         }
-        .frame(maxWidth: .infinity, minHeight: !reference && place.isCurrentPosition ? 0 : MapQuickCardMetrics.minimumTarget, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: !reference && !displaysClose ? 0 : MapQuickCardMetrics.minimumTarget, alignment: .topLeading)
     }
 
     private var placeTitle: some View { placeTitle(reference: false) }
@@ -195,23 +238,23 @@ struct MapQuickPlaceCard: View {
     }
 
     private var closeTextReservation: CGFloat {
-        place.isCurrentPosition ? 0 : MapQuickCardMetrics.minimumTarget + MapQuickCardMetrics.spacing
+        displaysClose ? MapQuickCardMetrics.minimumTarget + MapQuickCardMetrics.spacing : 0
     }
 
     private var closeButton: some View {
-        Button(action: onClose) {
+        DSButton(action: onClose) {
             Image(systemName: MapQuickCardSymbols.close)
-                .font(.system(size: MapQuickCardMetrics.closeSymbolSize, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .frame(
                     width: MapQuickCardMetrics.closeVisualSize,
                     height: MapQuickCardMetrics.closeVisualSize
                 )
                 .background(
-                    reduceTransparency ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
+                    usesOpaqueSurface ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
                     in: Circle()
                 )
                 .glassEffect(
-                    reduceTransparency ? .identity : .regular.interactive(),
+                    usesOpaqueSurface ? .identity : .regular.interactive(),
                     in: .circle
                 )
                 .frame(
@@ -225,71 +268,130 @@ struct MapQuickPlaceCard: View {
         .accessibilityIdentifier(MapQuickCardAccessibility.close)
     }
 
+    @ViewBuilder
     private var actionButtons: some View {
+        if let detailActions {
+            LocationDetailActionsView(
+                payload: detailActions.payload,
+                isSaved: isSaved,
+                isFavorite: detailActions.isFavorite,
+                canUpdate: !isSaving && canSave,
+                canMutate: detailActions.canMutate,
+                onUpdate: onSave,
+                onOpenInMaps: onOpenInMaps,
+                onFavorite: detailActions.onFavorite,
+                onDelete: detailActions.onDelete,
+                onCopied: detailActions.onCopied,
+                layout: .card,
+                rendersOpaqueSurface: usesOpaqueSurface
+            )
+        } else {
+            legacyActionButtons
+        }
+    }
+
+    private var legacyActionButtons: some View {
         GlassEffectContainer(spacing: MapQuickCardMetrics.actionSpacing) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: MapQuickCardMetrics.actionSpacing) {
-                    detailsButton
+                    saveButton
                     mapsButton
                 }
-                .fixedSize(horizontal: true, vertical: false)
-
-                detailsButton
+                saveButton
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private var detailsButton: some View {
-        Button(action: onViewDetails) {
-            Text(MapKeys.viewDetails)
-                .font(.footnote)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, MapQuickCardMetrics.actionHorizontalPadding)
-                .frame(
-                    minWidth: MapQuickCardMetrics.minimumTarget,
-                    minHeight: MapQuickCardMetrics.actionVisualHeight
-                )
-                .background(
-                    reduceTransparency ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
-                    in: Capsule()
-                )
-                .glassEffect(
-                    reduceTransparency ? .identity : .regular.interactive(),
-                    in: .capsule
-                )
-                .padding(.vertical, MapQuickCardMetrics.actionTargetOutset)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.vertical, -MapQuickCardMetrics.actionTargetOutset)
-        .accessibilityIdentifier(MapQuickCardAccessibility.details)
+    private var saveButton: some View {
+        MapQuickCardAction(key: isSaving ? .saving : nil,
+                           symbol: isSaved ? MapQuickCardSymbols.edit : MapQuickCardSymbols.save,
+                           identifier: MapQuickCardAccessibility.save, commonKey: isSaved ? .edit : .add,
+                           surfaceStyle: usesOpaqueSurface ? .opaque : .system, action: onSave)
+            .disabled(isSaving || !canSave)
     }
 
     private var mapsButton: some View {
-        Button(action: onOpenInMaps) {
-            Text(CommonKeys.openInMaps)
-                .font(.footnote)
+        MapQuickCardAction(key: .maps, symbol: MapQuickCardSymbols.maps,
+                           identifier: MapQuickCardAccessibility.openInMaps,
+                           surfaceStyle: usesOpaqueSurface ? .opaque : .system, action: onOpenInMaps)
+            .accessibilityLabel(Text(CommonKeys.openInMaps))
+    }
+}
+
+/// A standard Button may still activate after a finger slides within its bounds.
+/// Use tap recognition for activation, and native Button tracking for pressed
+/// appearance so the enclosing carousel can take over a horizontal drag.
+private struct MapQuickCardTapStyle: PrimitiveButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        MapQuickCardTapTarget(action: configuration.trigger) { configuration.label }
+    }
+}
+
+private struct MapQuickCardTapTarget<Content: View>: View {
+    @Environment(\.isEnabled) private var isEnabled
+    let action: () -> Void
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        // Native button tracking alone accepts an in-bounds slide on release.
+        // Its action is intentionally empty; only a recognized tap activates.
+        Button(action: {}) { content }
+            .buttonStyle(MapQuickCardPressedStyle())
+            .simultaneousGesture(TapGesture().onEnded { activate() })
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { activate() }
+            .focusable(isEnabled)
+            .onKeyPress(keys: [.space, .return], phases: .down) { _ in
+                guard isEnabled else { return .ignored }
+                activate()
+                return .handled
+            }
+    }
+
+    private func activate() {
+        guard isEnabled else { return }
+        action()
+    }
+}
+
+private struct MapQuickCardPressedStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? MapQuickCardMetrics.pressedOpacity : 1)
+    }
+}
+
+private struct MapQuickCardAction: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    let key: LocationKeys?
+    let symbol: String
+    let identifier: String
+    var commonKey: CommonKeys = .add
+    var surfaceStyle: MapCardSurfaceStyle = .system
+    let action: () -> Void
+    private var usesOpaqueSurface: Bool { surfaceStyle == .opaque || reduceTransparency }
+
+    var body: some View {
+        DSButton(action: action) {
+            Image(systemName: symbol)
+                .font(.body)
+                .frame(height: MapQuickCardMetrics.actionSymbolHeight)
                 .padding(.horizontal, MapQuickCardMetrics.actionHorizontalPadding)
-                .frame(
-                    minWidth: MapQuickCardMetrics.minimumTarget,
-                    minHeight: MapQuickCardMetrics.actionVisualHeight
-                )
-                .background(
-                    reduceTransparency ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
-                    in: Capsule()
-                )
-                .glassEffect(
-                    reduceTransparency ? .identity : .regular.interactive(),
-                    in: .capsule
-                )
-                .padding(.vertical, MapQuickCardMetrics.actionTargetOutset)
+                .padding(.vertical, MapQuickCardMetrics.actionVerticalPadding)
+                .frame(minWidth: MapQuickCardMetrics.minimumTarget, maxWidth: .infinity, minHeight: MapQuickCardMetrics.minimumTarget)
+                .background(usesOpaqueSurface ? AnyShapeStyle(.background) : AnyShapeStyle(.clear),
+                            in: RoundedRectangle(cornerRadius: MapQuickCardMetrics.actionCornerRadius))
+                .glassEffect(usesOpaqueSurface ? .identity : .regular.interactive(),
+                             in: .rect(cornerRadius: MapQuickCardMetrics.actionCornerRadius))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.vertical, -MapQuickCardMetrics.actionTargetOutset)
-        .accessibilityIdentifier(MapQuickCardAccessibility.openInMaps)
+        .accessibilityLabel(accessibilityTitle)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var accessibilityTitle: Text {
+        if let key { Text(key) } else { Text(commonKey) }
     }
 }
 
@@ -308,22 +410,22 @@ private enum MapQuickCardMetrics {
     static let referenceLongitude: Double = -180
     static let spacing: CGFloat = 8
     static let compactSectionSpacing: CGFloat = 4
+    static let actionSymbolHeight: CGFloat = 20
     static let actionSpacing: CGFloat = 8
     static let factSpacing: CGFloat = 4
     static let actionHorizontalPadding: CGFloat = 8
-    static let actionVisualHeight: CGFloat = 32
-    // Hit areas extend into the existing clear space above/below the capsules;
-    // only their visible height contributes to the card's content fitting.
-    static let actionTargetOutset: CGFloat = (minimumTarget - actionVisualHeight) / 2
+    static let actionVerticalPadding: CGFloat = 6
     static let contentPadding: CGFloat = 12
     static let factsToActionsSpacing: CGFloat = 16
     static let coordinateDigits = 6
     static let cornerRadius: CGFloat = 20
+    static let actionCornerRadius: CGFloat = 16
+    static let pressedOpacity = 0.65
     static let minimumTarget: CGFloat = 44
     static let closeVisualSize: CGFloat = 28
-    static let closeSymbolSize: CGFloat = 12
     static let previewHeight: CGFloat = 320
     static let previewWidth: CGFloat = 360
+    static let overflowPreviewWidth: CGFloat = 100
     static let constrainedPreviewHeight: CGFloat = 300
     static let reducedLandscapePreviewHeight: CGFloat = 180
     static let reducedLandscapePreviewWidth: CGFloat = 380
@@ -333,12 +435,15 @@ private enum MapQuickCardMetrics {
 
 private enum MapQuickCardSymbols {
     static let close = "xmark"
+    static let save = "plus"
+    static let edit = DSSystemIcon.edit.rawValue
+    static let maps = "map"
 }
 
 private enum MapQuickCardAccessibility {
-    static let card = "map.quickPlaceCard"
     static let close = "map.quickPlaceClose"
     static let details = "map.quickPlaceDetails"
+    static let save = "map.quickPlaceSave"
     static let openInMaps = "map.quickPlaceOpenInMaps"
 }
 
@@ -347,6 +452,9 @@ private enum MapQuickCardPreviewFixtures {
     static let longName = "A much longer place name that occupies two lines on the map card"
     static let longAddress = "A long street address with additional locality information that occupies two lines"
     static let currentLandscapeAddress = "Alley 457 Cach Mang Thang 8, Hoa Hung, Ho Chi Minh City, Vietnam"
+    static let destination = "My Places"
+    static let savedRecordID = "F94A663A-6769-4B7D-A81A-8B03283B3769"
+    static let savedNotes = "A saved note available in Copy."
     static let currentLandscapeTimestamp = Date(timeIntervalSince1970: 1_791_851_460)
 
     static let currentLandscapePlace = MapQuickPlace(
@@ -365,6 +473,29 @@ private enum MapQuickCardPreviewFixtures {
         coordinate: MapQuickPlacePreviewFixtures.searchPlace.coordinate,
         horizontalAccuracyMetres: nil,
         timestamp: nil
+    )
+
+    static let savedPlace = MapQuickPlace(
+        id: .savedLocation(UUID(uuidString: savedRecordID)!),
+        name: longName,
+        address: longAddress,
+        coordinate: MapQuickPlacePreviewFixtures.searchPlace.coordinate,
+        horizontalAccuracyMetres: nil,
+        timestamp: nil
+    )
+
+    static let savedActions = MapQuickCardActionConfiguration(
+        payload: LocationDetailPayload(name: longName, address: longAddress,
+            coordinate: savedPlace.coordinate, notes: savedNotes),
+        isFavorite: true, canMutate: true,
+        onFavorite: {}, onDelete: {}, onCopied: { _ in }
+    )
+
+    static let unsavedActions = MapQuickCardActionConfiguration(
+        payload: LocationDetailPayload(name: longName, address: longAddress,
+            coordinate: longSearchPlace.coordinate, notes: nil),
+        isFavorite: false, canMutate: false,
+        onFavorite: {}, onDelete: {}, onCopied: { _ in }
     )
 
     static let fullTemplatePlace = MapQuickPlace(
@@ -387,6 +518,12 @@ private enum MapQuickCardPreviewFixtures {
     .frame(width: MapQuickCardMetrics.previewWidth)
     .padding()
     .environment(\.dynamicTypeSize, .large)
+}
+
+#Preview {
+    MapQuickCardTapTarget(action: {}) {
+        Text(MapKeys.viewDetails).padding()
+    }
 }
 
 #Preview {
@@ -457,4 +594,107 @@ private enum MapQuickCardPreviewFixtures {
     .frame(width: MapQuickCardMetrics.previewWidth)
     .padding()
     .environment(\.dynamicTypeSize, .large)
+}
+
+#Preview {
+    MapQuickCardAction(key: nil, symbol: MapQuickCardSymbols.save,
+                       identifier: MapQuickCardAccessibility.save, action: {})
+        .padding()
+}
+
+#Preview {
+    MapQuickPlaceCard(
+        place: MapQuickPlacePreviewFixtures.searchPlace,
+        width: MapQuickCardMetrics.previewWidth, height: MapQuickCardMetrics.previewHeight,
+        onClose: {}, onOpenInMaps: {}, onViewDetails: {}, onReferenceHeightChange: { _ in },
+        canSave: true
+    )
+    .padding()
+}
+
+#Preview {
+    MapQuickPlaceCard(
+        place: MapQuickPlacePreviewFixtures.searchPlace,
+        width: MapQuickCardMetrics.previewWidth, height: MapQuickCardMetrics.previewHeight,
+        onClose: {}, onOpenInMaps: {}, onViewDetails: {}, onReferenceHeightChange: { _ in },
+        showsClose: false,
+        isSaved: true
+    )
+    .padding()
+}
+
+#Preview {
+    MapQuickPlaceCard(
+        place: MapQuickPlacePreviewFixtures.currentPlace,
+        width: MapQuickCardMetrics.previewWidth, height: MapQuickCardMetrics.previewHeight,
+        onClose: {}, onOpenInMaps: {}, onViewDetails: {}, onReferenceHeightChange: { _ in },
+        showsClose: true, canSave: true
+    )
+    .padding()
+}
+
+#Preview {
+    MapQuickPlaceCard(
+        place: MapQuickCardPreviewFixtures.savedPlace,
+        width: MapQuickCardMetrics.previewWidth, height: MapQuickCardMetrics.previewHeight,
+        onClose: {}, onOpenInMaps: {}, onViewDetails: {}, onReferenceHeightChange: { _ in },
+        isSaved: true, canSave: true, surfaceStyle: .system,
+        detailActions: MapQuickCardPreviewFixtures.savedActions
+    )
+    .padding()
+}
+
+#Preview {
+    MapQuickPlaceCard(
+        place: MapQuickCardPreviewFixtures.longSearchPlace,
+        width: MapQuickCardMetrics.previewWidth, height: MapQuickCardMetrics.previewHeight,
+        onClose: {}, onOpenInMaps: {}, onViewDetails: {}, onReferenceHeightChange: { _ in },
+        isSaved: false, canSave: true, surfaceStyle: .system,
+        detailActions: MapQuickCardPreviewFixtures.unsavedActions
+    )
+    .padding()
+}
+
+#Preview {
+    MapQuickPlaceCard(
+        place: MapQuickCardPreviewFixtures.savedPlace,
+        width: MapQuickCardMetrics.overflowPreviewWidth, height: MapQuickCardMetrics.previewHeight,
+        onClose: {}, onOpenInMaps: {}, onViewDetails: {}, onReferenceHeightChange: { _ in },
+        isSaved: true, canSave: true, surfaceStyle: .system,
+        detailActions: MapQuickCardPreviewFixtures.savedActions
+    )
+    .padding()
+}
+
+#Preview {
+    MapQuickPlaceCard(
+        place: MapQuickCardPreviewFixtures.savedPlace,
+        width: MapQuickCardMetrics.previewWidth, height: MapQuickCardMetrics.previewHeight,
+        onClose: {}, onOpenInMaps: {}, onViewDetails: {}, onReferenceHeightChange: { _ in },
+        isSaved: true, canSave: true, surfaceStyle: .opaque,
+        detailActions: MapQuickCardPreviewFixtures.savedActions
+    )
+    .padding()
+}
+
+#Preview {
+    MapQuickPlaceCard(
+        place: MapQuickCardPreviewFixtures.longSearchPlace,
+        width: MapQuickCardMetrics.previewWidth, height: MapQuickCardMetrics.previewHeight,
+        onClose: {}, onOpenInMaps: {}, onViewDetails: {}, onReferenceHeightChange: { _ in },
+        isSaved: false, canSave: true, surfaceStyle: .opaque,
+        detailActions: MapQuickCardPreviewFixtures.unsavedActions
+    )
+    .padding()
+}
+
+#Preview {
+    MapQuickPlaceCard(
+        place: MapQuickCardPreviewFixtures.savedPlace,
+        width: MapQuickCardMetrics.overflowPreviewWidth, height: MapQuickCardMetrics.previewHeight,
+        onClose: {}, onOpenInMaps: {}, onViewDetails: {}, onReferenceHeightChange: { _ in },
+        isSaved: true, canSave: true, surfaceStyle: .opaque,
+        detailActions: MapQuickCardPreviewFixtures.savedActions
+    )
+    .padding()
 }

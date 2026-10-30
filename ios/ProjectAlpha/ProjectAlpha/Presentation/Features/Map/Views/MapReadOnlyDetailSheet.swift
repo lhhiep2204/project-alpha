@@ -7,130 +7,69 @@
 
 import SwiftUI
 
-struct MapReadOnlyDetailSheet: View {
-    @Environment(\.dismiss) private var dismiss
+/// Read inputs for the shared location form; no mutable editor is required to view a place.
+struct LocationDetailsReadContext {
     let place: MapQuickPlace
-    let onOpenInMaps: () -> Void
+    var savedLocation: SavedLocation? = nil
+    var collection: Collection? = nil
+    var mediaService: (any LocationMediaService)? = nil
     var route: MapRouteModel? = nil
     var distanceUnit: DistanceUnit = .kilometre
+    var onOpenInMaps: () -> Void = {}
+    var actions: LocationDetailActionModel? = nil
+    var onFavorite: (SavedLocation) async -> Void = { _ in }
+    var onDelete: () async -> Bool = { false }
+}
+
+struct LocationReadPhotos: View {
+    @Environment(\.locale) private var locale
+    let assets: [LocalAssetReference]
+    let mediaService: (any LocationMediaService)?
+    let onView: (LocalAssetReference) -> Void
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: MapDetailMetrics.sectionSpacing) {
-                    MapDetailPlaceHeader(name: place.name, address: place.address)
-
-                    if !place.isCurrentPosition {
-                        Divider()
-                        MapRouteSummaryView(state: route?.state ?? .noOrigin, distanceUnit: distanceUnit)
+        if !assets.isEmpty {
+            Section {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: LocationPhotoLayout.spacing) {
+                        ForEach(assets, id: \.assetID) { asset in
+                            LocationPhotoTile(
+                                asset: asset, mediaService: mediaService,
+                                photoLabel: String(format: LocalizationManager.localizedString(LocationKeys.photoNumber, locale: locale),
+                                                   locale: locale, Int64((assets.firstIndex(of: asset) ?? 0) + 1)),
+                                removalDisabled: true, onView: { onView(asset) }
+                            )
+                            .frame(width: LocationPhotoLayout.photoSide, height: LocationPhotoLayout.photoSide)
+                        }
                     }
-
-                    Divider()
-                    MapDetailCoordinates(coordinate: place.coordinate)
+                    .padding(.vertical, LocationPhotoLayout.verticalInset)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(MapDetailMetrics.contentPadding)
-                .textSelection(.enabled)
-            }
-            .navigationTitle(Text(MapKeys.viewDetails))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .bottomBar) {
-                    Button(CommonKeys.openInMaps, action: onOpenInMaps)
-                        .accessibilityIdentifier(MapDetailAccessibility.openInMaps)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(CommonKeys.close) { dismiss() }
-                }
-            }
+                .scrollIndicators(.hidden)
+                .listRowSeparator(.hidden)
+            } header: { Text(LocationKeys.photos) }
         }
     }
 }
 
-private struct MapDetailPlaceHeader: View {
-    let name: String?
-    let address: String?
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: MapDetailMetrics.rowSpacing) {
-            Group {
-                if let name { Text(verbatim: name) }
-                else { Text(MapKeys.myLocation) }
-            }
-            .font(.title2.weight(.semibold))
-            .accessibilityAddTraits(.isHeader)
-
-            Group {
-                if let address, !address.isEmpty { Text(verbatim: address) }
-                else { Text(MapKeys.addressUnavailable) }
-            }
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct MapDetailCoordinates: View {
-    let coordinate: Coordinate
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MapDetailMetrics.rowSpacing) {
-            Text(MapKeys.coordinates).foregroundStyle(.secondary)
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: MapDetailMetrics.coordinateSpacing) {
-                    latitude
-                    longitude
-                }
-                VStack(alignment: .leading, spacing: MapDetailMetrics.rowSpacing) {
-                    latitude
-                    longitude
-                }
-            }
-        }
-        .font(MapPlaceTypography.fact)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var latitude: some View {
-        Text(coordinate.latitude, format: .number.precision(.fractionLength(MapDetailMetrics.coordinateDigits)))
-    }
-
-    private var longitude: some View {
-        Text(coordinate.longitude, format: .number.precision(.fractionLength(MapDetailMetrics.coordinateDigits)))
-    }
-}
-
-private enum MapDetailMetrics {
-    static let coordinateDigits = 6
-    static let rowSpacing: CGFloat = 8
-    static let coordinateSpacing: CGFloat = 12
-    static let sectionSpacing: CGFloat = 20
-    static let contentPadding: CGFloat = 20
-}
-
-private enum MapDetailAccessibility {
-    static let openInMaps = "map.detailOpenInMaps"
+#Preview {
+    LocationDetailsEditor(model: LocationEditorPreview.model(), mode: .read,
+        readContext: LocationDetailsReadContext(place: MapQuickPlacePreviewFixtures.searchPlace),
+        rendersLiveMap: false, onBeginUpdate: { LocationEditorPreview.model() })
+        .environment(DSToastManager())
 }
 
 #Preview {
-    MapReadOnlyDetailSheet(place: MapQuickPlacePreviewFixtures.searchPlace, onOpenInMaps: {})
+    LocationDetailsEditor(mode: .read,
+        readContext: LocationDetailsReadContext(place: MapQuickPlacePreviewFixtures.searchPlace,
+            savedLocation: LocationEditorPreview.savedLocation, collection: .mock),
+        rendersLiveMap: false, onBeginUpdate: { LocationEditorPreview.editModel() })
+        .environment(DSToastManager())
 }
 
 #Preview {
-    MapReadOnlyDetailSheet(place: MapQuickPlacePreviewFixtures.currentPlace, onOpenInMaps: {})
-        .environment(\.dynamicTypeSize, .accessibility3)
-}
-
-#Preview {
-    MapDetailPlaceHeader(
-        name: MapQuickPlacePreviewFixtures.searchPlace.name,
-        address: MapQuickPlacePreviewFixtures.searchPlace.address
-    )
-    .padding()
-}
-
-#Preview {
-    MapDetailCoordinates(coordinate: MapQuickPlacePreviewFixtures.searchPlace.coordinate)
-        .padding()
+    Form {
+        LocationReadPhotos(assets: LocationEditorPreview.photoAssets,
+            mediaService: LocationEditorPreview.photoService(), onView: { _ in })
+    }
 }

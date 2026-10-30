@@ -128,9 +128,11 @@ struct MapSelectedPlaceRouteTests {
                 #expect(text.contains(Fixture.calculatingText), Comment(rawValue: text))
             case .unavailable:
                 #expect(text.contains(Fixture.directDistanceText), Comment(rawValue: text))
+                #expect(!text.contains(Fixture.routeDistanceText), Comment(rawValue: text))
             default: Issue.record()
             }
             #expect(text.contains(Fixture.straightLineLabel) == showsDirectDistance, Comment(rawValue: text))
+            #expect(!text.contains(Fixture.unavailableText), Comment(rawValue: text))
         }
     }
 
@@ -569,6 +571,7 @@ struct MapSelectedPlaceRouteTests {
         static let routeDistanceText = "987"
         static let directDistanceText = "720"
         static let calculatingText = "Calculating route"
+        static let unavailableText = "Route unavailable"
         static let directDistance = 720.0
         static let summaryWidth: CGFloat = 360
         static let summaryHeight: CGFloat = 140

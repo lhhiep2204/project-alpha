@@ -51,7 +51,7 @@ struct DSToastView: View {
                     }
             )
             .contextMenu {
-                Button(action: onDismiss) {
+                DSButton(action: onDismiss) {
                     Text(CommonKeys.close)
                 }
             }

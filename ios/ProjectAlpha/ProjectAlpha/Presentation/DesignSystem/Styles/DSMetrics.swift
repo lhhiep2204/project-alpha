@@ -25,6 +25,34 @@ enum DSSpacing {
     static let huge = 40.0
 }
 
+/// Common dimensions for small visual elements and controls.
+enum DSSize {
+    /// xSmall: 4 - Fine visual details
+    static let xSmall = 4.0
+    /// small: 8 - Compact symbols and insets
+    static let small = 8.0
+    /// medium: 16 - Standard compact control size
+    static let medium = 16.0
+    /// large: 24 - Standard symbol size
+    static let large = 24.0
+    /// xLarge: 32 - Prominent symbol size
+    static let xLarge = 32.0
+    /// huge: 40 - Collection and location row icon size
+    static let huge = 40.0
+}
+
+/// Common border widths for custom surfaces.
+enum DSStroke {
+    /// thin: 1 - Hairline border
+    static let thin = 1.0
+    /// thick: 2 - Standard emphasized border
+    static let thick = 2.0
+    /// thicker: 4 - Strong border
+    static let thicker = 4.0
+    /// thickest: 6 - Maximum custom border width
+    static let thickest = 6.0
+}
+
 /// Corner radius constants for rounded UI components.
 enum DSRadius {
     /// small: 4 - Subtle rounding for controls

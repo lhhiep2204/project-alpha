@@ -14,7 +14,7 @@ struct MapCurrentLocationButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        DSButton(action: action) {
             ZStack {
                 if isLocating {
                     ProgressView()

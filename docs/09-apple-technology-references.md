@@ -72,7 +72,7 @@ Apple's current iPhone Duo guidance describes Xcode 27.1 Device Hub, full-screen
 
 ## Decisions that come from ProjectAlpha, not Apple
 
-Collection-scoped duplicates, the 20-metre proximity warning, microdegree rounding, five photos, three tabs, quick-capture placement, notes-off-by-default sharing, default collection protection, widget destination, draft interruption policy and local-only scope are product/engineering contracts in this specification. Do not attribute them to Apple documentation.
+Collection-scoped duplicates, the 20-metre proximity warning, microdegree rounding, five photos, three tabs, quick-capture placement, notes/photos-excluded sharing, default collection protection, widget destination, draft interruption policy and local-only scope are product/engineering contracts in this specification. Do not attribute them to Apple documentation.
 
 Clean Architecture, MVVM-style presentation models, a single app store writer and an App Group snapshot projection are engineering choices justified by this app's testability and ownership requirements. Apple frameworks support these choices but do not require this architecture.
 

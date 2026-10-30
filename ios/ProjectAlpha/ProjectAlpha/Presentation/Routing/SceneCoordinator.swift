@@ -13,6 +13,8 @@ enum MapPresentation: Hashable, Identifiable {
     case none
     case search
     case detail
+    case capture
+    case collectionPicker
 
     var id: Self { self }
 }
@@ -21,7 +23,9 @@ enum MapPresentation: Hashable, Identifiable {
 @Observable @MainActor
 final class SceneCoordinator {
     var selectedTab: MainTab = .home
-    private(set) var mapPresentation: MapPresentation = .none
+    let globalMapPresentation = MapPresentationState()
+    private(set) var globalLocationID: UUID?
+    private(set) var globalLocationFocusRequestID: UUID?
     let homeRouter = Router<HomeRoute>(root: .root)
     let mapRouter = Router<MapRoute>(root: .root)
     let settingsRouter = Router<SettingsRoute>(root: .root)
@@ -29,68 +33,32 @@ final class SceneCoordinator {
     /// Immediate display context for a collection selected in this scene.
     /// The destination resolves the current collection from storage after entry.
     private var collectionTitleHints: [UUID: String] = [:]
-    @ObservationIgnored private var pendingMapPresentation: MapPresentation?
-    @ObservationIgnored private var mapDismissalInFlight = false
+    var mapPresentation: MapPresentation { globalMapPresentation.mapPresentation }
+    var presentedMapSheet: MapPresentation? { globalMapPresentation.presentedMapSheet }
+    func openMapSearch() { globalMapPresentation.openMapSearch() }
+    func closeMapSearch() { globalMapPresentation.closeMapSearch() }
+    func openMapDetail() { globalMapPresentation.openMapDetail() }
+    func closeMapDetail() { globalMapPresentation.closeMapDetail() }
+    func openMapCapture() { globalMapPresentation.openMapCapture() }
+    func closeMapCapture() { globalMapPresentation.closeMapCapture() }
+    func openMapCollectionPicker() { globalMapPresentation.openMapCollectionPicker() }
+    func closeMapCollectionPicker() { globalMapPresentation.closeMapCollectionPicker() }
+    func dismissMapPresentation() { globalMapPresentation.dismissMapPresentation() }
+    func mapPresentationDidDismiss() { globalMapPresentation.mapPresentationDidDismiss() }
 
-    /// The only sheet item owned by the Global Map in this scene.
-    var presentedMapSheet: MapPresentation? {
-        mapPresentation == .none ? nil : mapPresentation
+    func openSavedLocationInGlobalMap(id: UUID) {
+        globalLocationID = id
+        globalLocationFocusRequestID = UUID()
+        selectedTab = .map
     }
 
-    func openMapSearch() {
-        requestMapPresentation(.search)
-    }
-
-    func closeMapSearch() {
-        closeMapPresentation(.search)
-    }
-
-    func openMapDetail() {
-        requestMapPresentation(.detail)
-    }
-
-    func closeMapDetail() {
-        closeMapPresentation(.detail)
-    }
-
-    /// Called by the single sheet binding when the system dismisses its item.
-    func dismissMapPresentation() {
-        guard mapPresentation != .none else { return }
-        pendingMapPresentation = nil
-        mapPresentation = .none
-        mapDismissalInFlight = true
-    }
-
-    /// Advance a queued presentation only after SwiftUI acknowledges dismissal.
-    func mapPresentationDidDismiss() {
-        guard mapDismissalInFlight else { return }
-        mapDismissalInFlight = false
-        if let pendingMapPresentation {
-            self.pendingMapPresentation = nil
-            mapPresentation = pendingMapPresentation
-        }
-    }
-
-    private func requestMapPresentation(_ requested: MapPresentation) {
-        guard requested != .none else { return }
-        if mapDismissalInFlight {
-            pendingMapPresentation = requested
-        } else if mapPresentation == .none {
-            mapPresentation = requested
-        } else if mapPresentation != requested {
-            pendingMapPresentation = requested
-            mapPresentation = .none
-            mapDismissalInFlight = true
-        }
-    }
-
-    private func closeMapPresentation(_ target: MapPresentation) {
-        if pendingMapPresentation == target {
-            pendingMapPresentation = nil
-        }
-        guard mapPresentation == target else { return }
-        mapPresentation = .none
-        mapDismissalInFlight = true
+    func openCollectionMap(collectionID: UUID, locationID: UUID?) {
+        let route = HomeRoute.collectionMap(collectionID: collectionID, initialLocationID: locationID)
+        if homeRouter.paths.contains(where: {
+            if case .collectionMap = $0 { return true }
+            return false
+        }) { return }
+        homeRouter.paths.append(route)
     }
 
     func setCollectionTitleHint(id: UUID, name: String) {

@@ -65,18 +65,21 @@ final class HomeViewModel {
         }
     }
 
-    func delete(_ summary: CollectionSummary) async {
-        guard !summary.collection.isDefault, deletingID == nil else { return }
+    @discardableResult
+    func delete(_ summary: CollectionSummary) async -> Bool {
+        guard !summary.collection.isDefault, deletingID == nil else { return false }
         deletingID = summary.id
         defer { deletingID = nil }
         do {
             _ = try await useCases.delete.execute(summary)
             await reload()
+            return true
         } catch CollectionWriteError.editConflict(let latest, let count) {
             changedCollection = CollectionSummary(collection: latest, locationCount: count)
         } catch {
             deletionError = true
         }
+        return false
     }
 
     func clearDeletionError() { deletionError = false }

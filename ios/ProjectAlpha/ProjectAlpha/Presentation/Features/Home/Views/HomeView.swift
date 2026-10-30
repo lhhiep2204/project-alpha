@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct HomeView: View {
+    @Environment(DSToastManager.self) private var toastManager
     @Environment(SceneCoordinator.self) private var coordinator
     @Environment(AppPreferences.self) private var preferences
     @Environment(\.locale) private var locale
@@ -41,7 +42,7 @@ struct HomeView: View {
                         Image.appSystemIcon(.folder)
                     }
                 } actions: {
-                    Button(CollectionKeys.retry) { viewModel.retry() }
+                    DSButton(CollectionKeys.retry) { viewModel.retry() }
                 }
             default:
                 collectionList
@@ -51,7 +52,7 @@ struct HomeView: View {
         .searchable(text: $viewModel.searchText, prompt: Text(CommonKeys.search))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
+                DSButton {
                     editorTarget = .create(id: UUID(), createdAt: .now)
                 } label: {
                     Label {
@@ -74,20 +75,20 @@ struct HomeView: View {
             }
         }
         .alert(Text(CollectionKeys.deleteFailed), isPresented: $showDeleteError) {
-            Button(CollectionKeys.retry) {
+            DSButton(CollectionKeys.retry) {
                 if let deleteTarget { Task { await attemptDelete(deleteTarget) } }
             }
-            Button(role: .cancel) {} label: { Text(CommonKeys.cancel) }
+            DSButton(role: .cancel) {} label: { Text(CommonKeys.cancel) }
         }
         .alert(Text(CollectionKeys.conflictTitle), isPresented: $showChangedCollection) {
-            Button(CollectionKeys.retry) {
+            DSButton(CollectionKeys.retry) {
                 if let latest = viewModel.changedCollection {
                     deleteTarget = latest
                     viewModel.clearChangedCollection()
                     showDeleteConfirmation = true
                 }
             }
-            Button(role: .cancel) {
+            DSButton(role: .cancel) {
                 viewModel.clearChangedCollection()
             } label: { Text(CommonKeys.cancel) }
         } message: {
@@ -158,7 +159,7 @@ struct HomeView: View {
                     isPresented: deleteConfirmation(for: summary.id),
                     presenting: deleteTarget
                 ) { target in
-                    Button(role: .destructive) {
+                    DSButton(role: .destructive) {
                         Task { await attemptDelete(target) }
                     } label: {
                         Text(CommonKeys.delete)
@@ -205,7 +206,7 @@ struct HomeView: View {
     }
 
     private func editButton(for summary: CollectionSummary) -> some View {
-        Button {
+        DSButton {
             editorTarget = .edit(summary.collection)
         } label: {
             Label {
@@ -217,7 +218,7 @@ struct HomeView: View {
     }
 
     private func deleteButton(for summary: CollectionSummary) -> some View {
-        Button {
+        DSButton {
             deleteTarget = summary
             showDeleteConfirmation = true
         } label: {
@@ -372,7 +373,7 @@ enum CollectionRowDatePresentation {
 
 extension HomeView {
     private func attemptDelete(_ summary: CollectionSummary) async {
-        await viewModel.delete(summary)
+        if await viewModel.delete(summary) { toastManager.show(CollectionKeys.deleteSucceeded) }
         if viewModel.deletionError {
             viewModel.clearDeletionError()
             showDeleteError = true
@@ -396,4 +397,5 @@ extension HomeView {
     .environment(\.calendar, Calendar(identifier: .gregorian))
     .environment(\.timeZone, .gmt)
     .environment(SceneCoordinator())
+    .environment(DSToastManager())
 }

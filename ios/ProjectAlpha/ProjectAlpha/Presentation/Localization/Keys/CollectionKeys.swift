@@ -59,6 +59,8 @@ nonisolated enum CollectionKeys: String, CaseIterable, LocalizedKey {
     case retry = "Retry"
 
     // MARK: - S
+    case saveSucceeded = "Collection saved successfully."
+    case deleteSucceeded = "Collection deleted successfully."
     case saveFailed = "Couldn’t save the collection. Try again."
     case storageUnavailable = "Your collections are unavailable. Retry to load them."
 

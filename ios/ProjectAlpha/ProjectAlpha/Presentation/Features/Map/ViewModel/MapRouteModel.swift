@@ -79,10 +79,13 @@ final class MapRouteModel {
             reset(to: .distanceOnly(distanceMetres: distance))
             return
         }
+        let savedLocationID: UUID?
+        if case .savedLocation(let id) = destination.id { savedLocationID = id }
+        else { savedLocationID = nil }
         let newKey = MapRouteKey(
             origin: origin, destinationID: destination.id,
             destination: RouteEndpoint(
-                coordinate: destination.coordinate, savedLocationID: nil,
+                coordinate: destination.coordinate, savedLocationID: savedLocationID,
                 placeIdentity: destination.placeIdentity
             ), mode: mode
         )

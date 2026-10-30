@@ -31,11 +31,18 @@ struct MapLocationFocus: Equatable {
 enum MapQuickPlaceID: Hashable {
     case currentPosition
     case searchCandidate(UUID)
+    case savedLocation(UUID)
 }
 
 enum MapCandidateSelectionSource: Equatable {
     case search
     case nativePOI
+}
+
+private enum MapCollectionTemporarySelection {
+    case currentPosition
+    case candidate(PlaceCandidate, MapCandidateSelectionSource, MapSelection<UUID>?)
+    case receipt(SavedLocation)
 }
 
 struct MapQuickPlace: Identifiable, Equatable {
@@ -68,6 +75,11 @@ struct MapQuickPlace: Identifiable, Equatable {
     var isCurrentPosition: Bool { id == .currentPosition }
 }
 
+private struct MapSavedLocationRequest {
+    let id: UUID
+    let generation: UInt64
+}
+
 private struct MapFocusViewport: Equatable {
     let width: CGFloat
     let height: CGFloat
@@ -81,6 +93,44 @@ private struct MapFocusViewport: Equatable {
 @MainActor
 final class MapViewModel {
     let route: MapRouteModel
+    let detailActions: LocationDetailActionModel
+    let scopeCollectionID: UUID?
+    private let locationRepository: (any LocationRepository)?
+    private let collectionRepository: (any CollectionRepository)?
+    let mediaService: (any LocationMediaService)?
+    private let initialLocationID: UUID?
+    private var appliedInitialLibrary = false
+    private var pendingSavedLocationRequest: MapSavedLocationRequest?
+    private var failedSavedLocationRequest: MapSavedLocationRequest?
+    private var libraryObservationFailed = false
+    private var failedReceiptID: UUID?
+    private(set) var libraryObservationRequestID = UUID()
+    private var savedFocusGeneration: UInt64 = 0
+    private var libraryGeneration: UInt64 = 0
+    private(set) var libraryRevision: Int64 = -1
+    private(set) var savedLocations: [SavedLocation] = []
+    private(set) var collections: [CollectionSummary] = []
+    private(set) var annotationGroups: [MapSavedAnnotationGroup] = []
+    private(set) var selectedSavedLocation: SavedLocation?
+    private(set) var existingSavedLocationID: UUID?
+    private(set) var capture: LocationCaptureModel?
+    private(set) var committedReceipt: SavedLocation?
+    private(set) var unavailableSavedLocationEvent: UInt64 = 0
+    var libraryLoadFailed: Bool {
+        libraryObservationFailed
+            || (failedReceiptID != nil && failedReceiptID == retainedReceiptID)
+            || failedSavedLocationRequest?.generation == savedFocusGeneration
+    }
+
+    var retainedReceiptID: UUID? {
+        guard case let .receipt(receipt) = collectionTemporarySelection else { return nil }
+        return receipt.id
+    }
+    private(set) var scopeUnavailable = false
+    private var suppressesCurrentPositionCard = false
+    private var collectionTemporarySelection: MapCollectionTemporarySelection?
+    private var deletionFallbackCandidate: PlaceCandidate?
+
     private let deviceLocationService: any DeviceLocationService
     private let placeSearchService: (any PlaceSearchService)?
     private let reverseGeocodingService: (any ReverseGeocodingService)?
@@ -120,6 +170,7 @@ final class MapViewModel {
     // A fresh session fix ends visible loading, while the same structured task
     // continues one bounded update. Repeated taps coalesce with that acquisition.
     private(set) var isAcquiringLocation = false
+    private var isAcquiringCollectionOrigin = false
     private(set) var showsUserLocation = false
     private(set) var recenterRequestID = 0
     var permissionAlertPresented = false
@@ -133,6 +184,15 @@ final class MapViewModel {
     }
 
     var visiblePlace: MapQuickPlace? {
+        if let saved = selectedSavedLocation { return quickPlace(for: saved) }
+        if let committedReceipt { return quickPlace(for: committedReceipt) }
+        if let committed = capture?.commit { return quickPlace(for: committedReceipt ?? committed.location) }
+        if let capture, capture.candidate.source == .currentPosition,
+           capture.isDirty || capture.isSaving || capture.isEditing {
+            return MapQuickPlace(id: .currentPosition, name: nil, address: capture.candidate.address,
+                                 coordinate: capture.candidate.coordinate,
+                                 horizontalAccuracyMetres: nil, timestamp: nil)
+        }
         if let selectedCandidate {
             return MapQuickPlace(
                 id: .searchCandidate(selectedCandidate.id),
@@ -144,7 +204,12 @@ final class MapViewModel {
                 placeIdentity: selectedCandidate.placeIdentity
             )
         }
-        guard let currentPosition else { return nil }
+        // A passive collection origin supplies travel facts, not a temporary card.
+        // Only explicit current-position selection creates that collection item.
+        if isCollectionMap {
+            guard case .currentPosition = collectionTemporarySelection else { return nil }
+        }
+        guard !suppressesCurrentPositionCard, let currentPosition else { return nil }
         return MapQuickPlace(
             id: .currentPosition,
             name: nil,
@@ -164,15 +229,562 @@ final class MapViewModel {
         positionClock: @escaping () -> Date = { .now },
         mapFeatureResolver: @escaping @MainActor (MapFeature) async throws(PlaceServiceError) -> PlaceCandidate = {
             _ in throw .providerUnavailable
-        }
+        },
+        locationRepository: (any LocationRepository)? = nil,
+        collectionRepository: (any CollectionRepository)? = nil,
+        scopeCollectionID: UUID? = nil,
+        initialLocationID: UUID? = nil,
+        mediaService: (any LocationMediaService)? = nil
     ) {
+        self.scopeCollectionID = scopeCollectionID
+        self.initialLocationID = initialLocationID
+        self.locationRepository = locationRepository
+        self.collectionRepository = collectionRepository
+        self.mediaService = mediaService
         self.deviceLocationService = deviceLocationService
         self.route = MapRouteModel(service: routeEstimationService)
+        self.detailActions = LocationDetailActionModel(repository: locationRepository, clock: positionClock)
         self.placeSearchService = placeSearchService
         self.reverseGeocodingService = reverseGeocodingService
         self.searchDebounceClock = searchDebounceClock
         self.positionClock = positionClock
         self.mapFeatureResolver = mapFeatureResolver
+    }
+
+    var isCollectionMap: Bool { scopeCollectionID != nil }
+
+    var collectionTemporaryPlace: MapQuickPlace? {
+        switch collectionTemporarySelection {
+        case .currentPosition:
+            if selectedSavedLocation == nil, let capture,
+               capture.isDirty || capture.isSaving || capture.isEditing { return visiblePlace }
+            guard let currentPosition else { return nil }
+            return MapQuickPlace(id: .currentPosition, name: nil, address: currentAddress,
+                                 coordinate: currentPosition.coordinate,
+                                 horizontalAccuracyMetres: currentPosition.horizontalAccuracyMetres,
+                                 timestamp: currentPosition.timestamp)
+        case let .candidate(candidate, _, _):
+            return MapQuickPlace(id: .searchCandidate(candidate.id), name: candidate.name,
+                                 address: candidate.address, coordinate: candidate.coordinate,
+                                 horizontalAccuracyMetres: nil, timestamp: nil,
+                                 placeIdentity: candidate.placeIdentity)
+        case let .receipt(saved): return quickPlace(for: saved)
+        case nil: return nil
+        }
+    }
+
+    var collectionCardPlaces: [MapQuickPlace] {
+        let temporary = collectionTemporaryPlace.map { [$0] } ?? []
+        return temporary + savedLocations.map(quickPlace(for:))
+    }
+
+    func showsClose(for place: MapQuickPlace) -> Bool {
+        if isCollectionMap {
+            return collectionTemporaryPlace?.id == place.id
+        }
+        return !place.isCurrentPosition
+    }
+
+    func selectCollectionCard(_ id: MapQuickPlaceID) {
+        guard visiblePlace?.id != id else { return }
+        if case let .receipt(saved) = collectionTemporarySelection, id == .savedLocation(saved.id) {
+            savedFocusGeneration &+= 1
+            clearMapFeatureSelection()
+            supersedePendingPositionFocus()
+            selectedSavedLocation = nil
+            selectedCandidate = nil
+            selectedCandidateSource = nil
+            selectedDetail = nil
+            discardCapture()
+            committedReceipt = saved
+            suppressesCurrentPositionCard = false
+            focusCamera(on: MapLocationFocus(coordinate: saved.coordinate,
+                        generation: operationGeneration, geographicKind: .unknown))
+            updateRoute()
+            route.setActive(isActive && routeOriginIsAuthorized)
+            return
+        }
+        if case let .savedLocation(savedID) = id { selectSavedLocation(savedID); return }
+        guard collectionTemporaryPlace?.id == id else { return }
+        switch collectionTemporarySelection {
+        case let .candidate(candidate, source, nativeSelection):
+            clearMapFeatureSelection()
+            mapSelection = nativeSelection
+            selectCandidate(candidate, source: source, focusesCamera: true)
+        case .currentPosition:
+            guard let currentPosition else { return }
+            savedFocusGeneration &+= 1
+            clearMapFeatureSelection()
+            supersedePendingPositionFocus()
+            selectedSavedLocation = nil
+            selectedCandidate = nil
+            selectedCandidateSource = nil
+            selectedDetail = nil
+            discardCapture()
+            suppressesCurrentPositionCard = false
+            focusCamera(on: MapLocationFocus(coordinate: currentPosition.coordinate,
+                        generation: operationGeneration, geographicKind: .point))
+            updateRoute()
+        case .receipt, nil: break
+        }
+    }
+
+    var selectedPageIndex: Int? {
+        if isCollectionMap {
+            return collectionCardPlaces.firstIndex { $0.id == visiblePlace?.id }
+        }
+        guard let id = selectedSavedLocation?.id else { return nil }
+        return savedLocations.firstIndex { $0.id == id }
+    }
+
+    var canPagePrevious: Bool { selectedPageIndex.map { $0 > 0 } ?? false }
+    var canPageNext: Bool {
+        selectedPageIndex.map { $0 + 1 < (isCollectionMap ? collectionCardPlaces.count : savedLocations.count) } ?? false
+    }
+
+    func pageSelection(by offset: Int) {
+        guard let index = selectedPageIndex else { return }
+        let next = index + offset
+        if isCollectionMap {
+            let places = collectionCardPlaces
+            guard places.indices.contains(next) else { return }
+            selectCollectionCard(places[next].id)
+            return
+        }
+        guard savedLocations.indices.contains(next) else { return }
+        selectSavedLocation(savedLocations[next].id)
+    }
+
+    func quickPlace(for saved: SavedLocation) -> MapQuickPlace {
+        MapQuickPlace(id: .savedLocation(saved.id), name: saved.displayName ?? saved.name,
+                      address: saved.address, coordinate: saved.coordinate,
+                      horizontalAccuracyMetres: nil, timestamp: nil, placeIdentity: saved.placeIdentity)
+    }
+
+    /// The view owns restarting the structured observation without replacing this map session.
+    func retryLibraryLoading() {
+        libraryObservationRequestID = UUID()
+    }
+
+    /// One structured stream per visible session. A resumed older stream cannot win.
+    func observeSavedLocations() async {
+        guard !Task.isCancelled, let locationRepository else { return }
+        let requestID = libraryObservationRequestID
+        libraryGeneration &+= 1
+        let generation = libraryGeneration
+        if let failed = failedSavedLocationRequest, failed.generation == savedFocusGeneration {
+            await resolveSavedLocationRequest(id: failed.id, generation: failed.generation, observationRequestID: requestID)
+            guard !Task.isCancelled, generation == libraryGeneration,
+                  requestID == libraryObservationRequestID else { return }
+        }
+        let stream = await locationRepository.observeLocations(collectionID: scopeCollectionID)
+        do {
+            for try await snapshot in stream {
+                guard !Task.isCancelled, generation == libraryGeneration,
+                      requestID == libraryObservationRequestID else { return }
+                libraryObservationFailed = false
+                applyLibrarySnapshot(snapshot)
+            }
+        } catch {
+            guard !Task.isCancelled, generation == libraryGeneration,
+                  requestID == libraryObservationRequestID else { return }
+            libraryObservationFailed = true
+        }
+    }
+
+    func applyLibrarySnapshot(_ snapshot: LocationLibrarySnapshot) {
+        guard snapshot.libraryRevision >= libraryRevision else { return }
+        libraryRevision = snapshot.libraryRevision
+        collections = snapshot.collections
+        scopeUnavailable = scopeCollectionID.map { id in !snapshot.collections.contains { $0.id == id } } ?? false
+        savedLocations = snapshot.locations.filter {
+            scopeCollectionID == nil || $0.collectionID == scopeCollectionID
+        }.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        refreshAnnotationGroups()
+        refreshCaptureMatch()
+        if let selected = selectedSavedLocation {
+            selectedSavedLocation = savedLocations.first { $0.id == selected.id }
+            if selectedSavedLocation == nil {
+                selectedDetail = nil
+                if detailActions.deletingLocationID == selected.id {
+                    suppressesCurrentPositionCard = true
+                }
+                updateRoute()
+            }
+            else if selectedDetail != nil { selectedDetail = visiblePlace }
+        }
+        if let request = pendingSavedLocationRequest {
+            pendingSavedLocationRequest = nil
+            if request.generation == savedFocusGeneration {
+                if savedLocations.contains(where: { $0.id == request.id }) {
+                    appliedInitialLibrary = true
+                    selectSavedLocation(request.id)
+                    return
+                }
+                unavailableSavedLocationEvent &+= 1
+            }
+        }
+        guard !appliedInitialLibrary else { return }
+        appliedInitialLibrary = true
+        if let initialLocationID { selectSavedLocation(initialLocationID) }
+        else if isCollectionMap, !userChangedCamera { fitAll() }
+    }
+
+    func requestSavedLocation(id: UUID) {
+        savedFocusGeneration &+= 1
+        if savedLocations.contains(where: { $0.id == id }) { selectSavedLocation(id) }
+        else {
+            pendingSavedLocationRequest = MapSavedLocationRequest(id: id, generation: savedFocusGeneration)
+        }
+    }
+
+    /// Explicit cross-map navigation resolves current data before using a retained projection.
+    func resolveSavedLocationRequest(id: UUID) async {
+        savedFocusGeneration &+= 1
+        let generation = savedFocusGeneration
+        pendingSavedLocationRequest = nil
+        failedSavedLocationRequest = nil
+        await resolveSavedLocationRequest(id: id, generation: generation)
+    }
+
+    private func resolveSavedLocationRequest(id: UUID, generation: UInt64, observationRequestID: UUID? = nil) async {
+        guard !Task.isCancelled, generation == savedFocusGeneration,
+              observationRequestID == nil || observationRequestID == libraryObservationRequestID else { return }
+        guard let locationRepository else { requestSavedLocation(id: id); return }
+        // Keep this target local: an older observation cannot consume the intent.
+        do {
+            let snapshot = try await locationRepository.locationSnapshot(collectionID: scopeCollectionID)
+            guard !Task.isCancelled, generation == savedFocusGeneration,
+                  observationRequestID == nil || observationRequestID == libraryObservationRequestID else { return }
+            failedSavedLocationRequest = nil
+            if snapshot.libraryRevision >= libraryRevision { applyLibrarySnapshot(snapshot) }
+            if savedLocations.contains(where: { $0.id == id }) {
+                selectSavedLocation(id)
+            } else {
+                unavailableSavedLocationEvent &+= 1
+            }
+        } catch {
+            guard !Task.isCancelled, generation == savedFocusGeneration,
+                  observationRequestID == nil || observationRequestID == libraryObservationRequestID else { return }
+            failedSavedLocationRequest = MapSavedLocationRequest(id: id, generation: generation)
+        }
+    }
+
+    func selectSavedLocation(_ id: UUID) {
+        applySavedLocationSelection(id, preservingPresentedDetail: false)
+    }
+
+    private func applySavedLocationSelection(_ id: UUID, preservingPresentedDetail: Bool, focusesCamera: Bool = true) {
+        savedFocusGeneration &+= 1
+        guard let saved = savedLocations.first(where: { $0.id == id }) else { return }
+        let keepsDetail = preservingPresentedDetail && selectedDetail != nil
+        clearMapFeatureSelection()
+        supersedePendingPositionFocus()
+        selectedCandidate = nil
+        selectedCandidateSource = nil
+        selectedSavedLocation = saved
+        selectedDetail = keepsDetail ? quickPlace(for: saved) : nil
+        discardCapture()
+        suppressesCurrentPositionCard = false
+        mapSelection = MapSelection(id)
+        if !keepsDetail && focusesCamera {
+            focusCamera(on: MapLocationFocus(coordinate: saved.coordinate,
+                        generation: operationGeneration, geographicKind: .unknown))
+        }
+        updateRoute()
+        route.setActive(isActive && routeOriginIsAuthorized)
+    }
+
+    func fitAll() {
+        collectionTemporarySelection = nil
+        deletionFallbackCandidate = nil
+        savedFocusGeneration &+= 1
+        clearMapFeatureSelection()
+        supersedePendingPositionFocus()
+        selectedCandidate = nil
+        selectedCandidateSource = nil
+        selectedSavedLocation = nil
+        selectedDetail = nil
+        discardCapture()
+        suppressesCurrentPositionCard = true
+        updateRoute()
+        guard let region = MapSavedCamera.region(for: savedLocations.map(\.coordinate)) else { return }
+        cameraPosition = .region(region)
+    }
+
+    /// Freeze a current-position coordinate and its optional address into a draft.
+    func prepareCapture(fallbackName: String) {
+        if let capture, capture.isEditingSavedLocation, !capture.isCancelled, capture.commit == nil,
+           capture.isEditing || capture.isDirty || capture.isSaving { return }
+        guard selectedSavedLocation == nil, committedReceipt == nil, let place = visiblePlace,
+              let locationRepository, let collectionRepository else { return }
+        if capture?.commit != nil { return }
+        if let capture, capture.candidate.source == .currentPosition,
+           capture.isDirty || capture.isSaving || capture.isEditing { return }
+        if let capture, capture.candidate.coordinate == place.coordinate,
+           capture.candidate.placeIdentity == place.placeIdentity,
+           capture.candidate.address == place.address { return }
+        guard let destination = scopeCollectionID ?? collections.first(where: { $0.collection.isDefault })?.id else { return }
+        let candidate = selectedCandidate ?? PlaceCandidate(
+            id: UUID(), source: .currentPosition, placeIdentity: nil,
+            name: fallbackName, address: place.address, category: nil,
+            coordinate: place.coordinate, geographicKind: .point
+        )
+        discardCapture()
+        capture = LocationCaptureModel(candidate: candidate, destinationCollectionID: destination,
+                                       repository: locationRepository, collectionRepository: collectionRepository,
+                                       mediaService: mediaService)
+        refreshCaptureMatch()
+    }
+
+    /// Editing uses the same scene-owned sheet and keeps the map camera untouched.
+    @discardableResult
+    func prepareSavedLocationEdit() -> Bool {
+        guard let saved = displayedSavedLocation,
+              let locationRepository, let collectionRepository else { return false }
+        if let capture, capture.isEditingSavedLocation, capture.id == saved.id,
+           capture.isEditing, !capture.isCancelled, capture.commit == nil { return true }
+        discardCapture()
+        if selectedSavedLocation == nil { committedReceipt = saved }
+        capture = LocationCaptureModel(savedLocation: saved, repository: locationRepository,
+                                       collectionRepository: collectionRepository, mediaService: mediaService)
+        return true
+    }
+
+    /// Selection changes while a write is suspended cannot receive an old receipt.
+    func acceptCaptureCommit(_ completed: LocationCaptureModel) {
+        guard capture === completed, let commit = completed.commit else { return }
+        if completed.isEditingSavedLocation {
+            acceptSavedLocationEdit(commit)
+            return
+        }
+        // A newer observed revision is authoritative, including a record's absence.
+        if libraryRevision > commit.libraryRevision {
+            if let latest = savedLocations.first(where: { $0.id == commit.location.id }) {
+                collectionTemporarySelection = nil
+                applySavedLocationSelection(latest.id, preservingPresentedDetail: true)
+            } else if scopeCollectionID == nil || commit.location.collectionID == scopeCollectionID {
+                if isCollectionMap {
+                    collectionTemporarySelection = nil
+                    clearMapFeatureSelection()
+                    selectedCandidate = nil
+                    selectedCandidateSource = nil
+                }
+                discardCapture()
+                selectedDetail = nil
+                suppressesCurrentPositionCard = true
+                updateRoute()
+            } else {
+                committedReceipt = commit.location
+                collectionTemporarySelection = .receipt(commit.location)
+                updateRoute()
+                if selectedDetail != nil { selectedDetail = visiblePlace }
+            }
+            return
+        }
+        libraryRevision = max(libraryRevision, commit.libraryRevision)
+        if scopeCollectionID == nil || commit.location.collectionID == scopeCollectionID {
+            collectionTemporarySelection = nil
+            if !savedLocations.contains(where: { $0.id == commit.location.id }) {
+                savedLocations.append(commit.location)
+                savedLocations.sort {
+                    if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
+                    return $0.id.uuidString < $1.id.uuidString
+                }
+            }
+            refreshAnnotationGroups()
+            applySavedLocationSelection(commit.location.id, preservingPresentedDetail: true)
+        } else {
+            committedReceipt = commit.location
+            collectionTemporarySelection = .receipt(commit.location)
+        }
+        updateRoute()
+        if selectedDetail != nil { selectedDetail = visiblePlace }
+    }
+
+    private func acceptSavedLocationEdit(_ commit: LocationCommit) {
+        clearMapFeatureSelection()
+        selectedCandidate = nil
+        selectedCandidateSource = nil
+        existingSavedLocationID = nil
+        let saved = libraryRevision > commit.libraryRevision
+            ? savedLocations.first { $0.id == commit.location.id } : commit.location
+        libraryRevision = max(libraryRevision, commit.libraryRevision)
+        savedLocations.removeAll { $0.id == commit.location.id }
+        if let saved, scopeCollectionID == nil || saved.collectionID == scopeCollectionID {
+            savedLocations.append(saved)
+            savedLocations.sort {
+                if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
+                return $0.id.uuidString < $1.id.uuidString
+            }
+            selectedSavedLocation = saved
+            mapSelection = MapSelection(saved.id)
+        } else {
+            selectedSavedLocation = nil
+            mapSelection = nil
+            selectedDetail = nil
+            suppressesCurrentPositionCard = true
+        }
+        capture = nil
+        committedReceipt = nil
+        collectionTemporarySelection = nil
+        refreshAnnotationGroups()
+        if selectedDetail != nil { selectedDetail = visiblePlace }
+        updateRoute()
+    }
+
+    var displayedSavedLocation: SavedLocation? {
+        selectedSavedLocation
+            ?? savedLocations.first { $0.id == existingSavedLocationID }
+            ?? committedReceipt ?? capture?.commit?.location
+    }
+
+    /// Apply only a committed patch, preserving selection, camera and route requests.
+    func toggleDetailFavorite(_ location: SavedLocation) async {
+        guard let commit = await detailActions.toggleFavorite(location),
+              commit.libraryRevision >= libraryRevision else { return }
+        libraryRevision = commit.libraryRevision
+        if let index = savedLocations.firstIndex(where: { $0.id == commit.location.id }) {
+            savedLocations[index] = commit.location
+        }
+        if selectedSavedLocation?.id == commit.location.id { selectedSavedLocation = commit.location }
+        if committedReceipt?.id == commit.location.id { committedReceipt = commit.location }
+        if case let .receipt(saved) = collectionTemporarySelection, saved.id == commit.location.id {
+            collectionTemporarySelection = .receipt(commit.location)
+        }
+        if capture?.commit?.location.id == commit.location.id, selectedSavedLocation == nil {
+            committedReceipt = commit.location
+        }
+    }
+
+    @discardableResult
+    func deleteDetailLocation() async -> Bool {
+        let target = detailActions.deleteTarget
+        let wasDisplayed = target != nil && displayedSavedLocation?.id == target?.id
+        let focusGeneration = savedFocusGeneration
+        let featureGeneration = mapFeatureGeneration
+        guard let commit = await detailActions.deleteLocation() else { return false }
+        // A newer stream revision has already reconciled the logical library.
+        if commit.libraryRevision >= libraryRevision {
+            libraryRevision = commit.libraryRevision
+            savedLocations.removeAll { $0.id == commit.deletedLocationID }
+            refreshAnnotationGroups()
+        }
+        if wasDisplayed, savedFocusGeneration == focusGeneration,
+           mapFeatureGeneration == featureGeneration {
+            clearMapFeatureSelection()
+            selectedSavedLocation = nil
+            selectedCandidate = nil
+            selectedCandidateSource = nil
+            selectedDetail = nil
+            committedReceipt = nil
+            existingSavedLocationID = nil
+            discardCapture()
+            let remaining = savedLocations.filter { $0.collectionID == target?.collectionID }
+            // Use the deleted item's immutable ordering key against the latest
+            // projection, including items inserted while the write was suspended.
+            let next = target.flatMap { deleted in
+                remaining.first {
+                    $0.createdAt < deleted.createdAt
+                        || ($0.createdAt == deleted.createdAt && $0.id.uuidString > deleted.id.uuidString)
+                }
+            } ?? remaining.last
+            if let next {
+                applySavedLocationSelection(next.id, preservingPresentedDetail: false, focusesCamera: false)
+            } else if let candidate = deletionFallbackCandidate {
+                selectCandidate(candidate, source: .search, focusesCamera: false)
+            } else {
+                collectionTemporarySelection = isCollectionMap && currentPosition != nil ? .currentPosition : nil
+                suppressesCurrentPositionCard = false
+                updateRoute()
+            }
+        }
+        return true
+    }
+
+    /// Scoped projections cannot prove an out-of-scope receipt still exists.
+    func refreshCommittedReceipt(expectedLibraryRevision: Int64) async {
+        guard !Task.isCancelled, libraryRevision == expectedLibraryRevision else { return }
+        guard case let .receipt(receipt) = collectionTemporarySelection,
+              receipt.collectionID != scopeCollectionID, scopeCollectionID != nil,
+              let locationRepository else {
+            failedReceiptID = nil
+            return
+        }
+        let requestID = libraryObservationRequestID
+        do {
+            let current = try await locationRepository.location(id: receipt.id)
+            guard !Task.isCancelled, requestID == libraryObservationRequestID,
+                  case let .receipt(retained) = collectionTemporarySelection,
+                  retained == receipt, libraryRevision == expectedLibraryRevision else { return }
+            failedReceiptID = nil
+            guard let current else {
+                collectionTemporarySelection = nil
+                if committedReceipt?.id == receipt.id {
+                    // A newer POI tap may still be resolving over this receipt.
+                    if mapFeatureTask == nil { clearMapFeatureSelection() }
+                    acceptedNativeMapSelection = nil
+                    selectedCandidate = nil
+                    selectedCandidateSource = nil
+                    discardCapture()
+                    selectedDetail = nil
+                    suppressesCurrentPositionCard = true
+                }
+                unavailableSavedLocationEvent &+= 1
+                updateRoute()
+                return
+            }
+            collectionTemporarySelection = .receipt(current)
+            if committedReceipt?.id == receipt.id {
+                committedReceipt = current
+                if selectedDetail != nil { selectedDetail = quickPlace(for: current) }
+            }
+            updateRoute()
+        } catch {
+            guard !Task.isCancelled, requestID == libraryObservationRequestID,
+                  case let .receipt(retained) = collectionTemporarySelection,
+                  retained == receipt, libraryRevision == expectedLibraryRevision else { return }
+            failedReceiptID = receipt.id
+        }
+    }
+
+    func refreshCaptureMatch() {
+        existingSavedLocationID = nil
+        guard let capture, capture.commit == nil else { return }
+        if case .blockingDuplicate(let id, _) = DuplicatePlacePolicy.evaluate(
+            draftID: capture.id, destinationCollectionID: capture.destinationCollectionID,
+            candidate: capture.candidate, against: savedLocations
+        ) { existingSavedLocationID = id }
+    }
+
+    private func discardCapture() {
+        existingSavedLocationID = nil
+        committedReceipt = nil
+        let abandoned = capture
+        capture = nil
+        // The media owner handles staged cleanup; an in-flight committed write is
+        // allowed to settle and cannot change a newer map selection.
+        if let abandoned { Task { await abandoned.cancel() } }
+    }
+
+    private func refreshAnnotationGroups() {
+        let collectionsByID = Dictionary(collections.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let grouped = Dictionary(grouping: savedLocations, by: \.coordinate)
+        annotationGroups = grouped.values.compactMap { locations in
+            guard let first = locations.first else { return nil }
+            let records = locations.map { location in
+                let collection = collectionsByID[location.collectionID]
+                return MapSavedPinRecord(id: location.id, title: location.name,
+                                         collectionName: collection?.collection.name,
+                                         createdAt: location.createdAt,
+                                         collectionIsDefault: collection?.collection.isDefault ?? false,
+                                         collectionLocationCount: collection?.locationCount ?? 0)
+            }
+            return MapSavedAnnotationGroup(id: first.id, coordinate: first.coordinate, records: records)
+        }.sorted { $0.id.uuidString < $1.id.uuidString }
     }
 
     /// Cheap creation belongs to the opening action, never rendering or initialization.
@@ -234,6 +846,7 @@ final class MapViewModel {
     }
 
     func requestRecenter() {
+        savedFocusGeneration &+= 1
         pauseMapFeatureSelection()
         guard isActive, !isAcquiringLocation, !hasPendingRecenterRequest else { return }
         routeOriginIsAuthorized = false
@@ -261,6 +874,7 @@ final class MapViewModel {
         consumedRecenterRequestID = recenterRequestID
         isLocating = false
         isAcquiringLocation = false
+        isAcquiringCollectionOrigin = false
         showsUserLocation = false
     }
 
@@ -295,6 +909,9 @@ final class MapViewModel {
                selectedCandidateSource == .nativePOI || mapFeatureTask != nil {
                 // Native focus is independent of the retained card. Only its X
                 // dismisses the candidate and returns to the session position.
+                if case let .candidate(candidate, .nativePOI, _) = collectionTemporarySelection {
+                    collectionTemporarySelection = .candidate(candidate, .nativePOI, nil)
+                }
                 clearMapFeatureSelection()
             } else {
                 pauseMapFeatureSelection()
@@ -314,7 +931,13 @@ final class MapViewModel {
         }
         cancelMapFeatureResolution()
         mapSelection = selection
+        if let id = selection?.value, savedLocations.contains(where: { $0.id == id }) {
+            selectSavedLocation(id)
+            return
+        }
         guard let feature = selection?.feature else { return }
+        // Nil/equal/restored native focus is bookkeeping, not a newer destination.
+        savedFocusGeneration &+= 1
         beginMapFeatureSelection { [mapFeatureResolver] () async throws(PlaceServiceError) -> PlaceCandidate in
             try await mapFeatureResolver(feature)
         }
@@ -387,7 +1010,15 @@ final class MapViewModel {
         source: MapCandidateSelectionSource,
         focusesCamera: Bool
     ) {
+        savedFocusGeneration &+= 1
+        deletionFallbackCandidate = source == .search ? candidate : nil
         acceptedNativeMapSelection = source == .nativePOI ? mapSelection : nil
+        if isCollectionMap {
+            collectionTemporarySelection = .candidate(candidate, source, acceptedNativeMapSelection)
+        }
+        selectedSavedLocation = nil
+        suppressesCurrentPositionCard = false
+        discardCapture()
         selectedCandidate = candidate
         selectedCandidateSource = source
         selectedDetail = nil
@@ -405,19 +1036,42 @@ final class MapViewModel {
     }
 
     private func supersedePendingPositionFocus() {
-        operationGeneration += 1
+        // A collection's background origin enriches whichever saved card settles,
+        // including when its first library snapshot arrives after acquisition starts.
+        if !isAcquiringCollectionOrigin {
+            operationGeneration += 1
+            isLocating = false
+            isAcquiringLocation = false
+        }
         locationFocus = nil
-        isLocating = false
-        isAcquiringLocation = false
         consumedRecenterRequestID = recenterRequestID
         userChangedCamera = true
     }
 
     func dismissSearchCandidate() {
+        deletionFallbackCandidate = nil
+        if isCollectionMap {
+            guard collectionTemporarySelection != nil else { return }
+            savedFocusGeneration &+= 1
+            collectionTemporarySelection = nil
+            clearMapFeatureSelection()
+            supersedePendingPositionFocus()
+            selectedCandidate = nil
+            selectedSavedLocation = nil
+            selectedCandidateSource = nil
+            selectedDetail = nil
+            discardCapture()
+            suppressesCurrentPositionCard = true
+            if let first = savedLocations.first { selectSavedLocation(first.id) }
+            else { updateRoute() }
+            return
+        }
         let dismissesPendingFeature = mapFeatureTask != nil
         clearMapFeatureSelection()
-        guard selectedCandidate != nil || dismissesPendingFeature else { return }
+        guard selectedCandidate != nil || selectedSavedLocation != nil || capture?.commit != nil || dismissesPendingFeature else { return }
         selectedCandidate = nil
+        selectedSavedLocation = nil
+        discardCapture()
         selectedCandidateSource = nil
         selectedDetail = nil
         updateRoute()
@@ -428,6 +1082,25 @@ final class MapViewModel {
             coordinate: currentPosition.coordinate, generation: operationGeneration,
             geographicKind: .point
         )
+    }
+
+    /// Scene-owned editing state also restores update mode after a tab/scene pause.
+    var isUpdatingDetail: Bool {
+        guard let capture else { return false }
+        return capture.isEditing && !capture.isCancelled && capture.commit == nil
+    }
+
+    /// An in-place editor outlives a record disappearing from the map projection.
+    /// Save still validates the original draft/revision and can report a missing record.
+    var presentedDetail: MapQuickPlace? {
+        if let selectedDetail { return selectedDetail }
+        guard isUpdatingDetail, let capture else { return nil }
+        let candidate = capture.candidate
+        let id: MapQuickPlaceID = capture.isEditingSavedLocation ? .savedLocation(capture.id)
+            : candidate.source == .currentPosition ? .currentPosition : .searchCandidate(candidate.id)
+        return MapQuickPlace(id: id, name: candidate.name, address: candidate.address,
+                            coordinate: candidate.coordinate, horizontalAccuracyMetres: nil,
+                            timestamp: nil, placeIdentity: candidate.placeIdentity)
     }
 
     func showDetails() {
@@ -502,16 +1175,19 @@ final class MapViewModel {
 
     private func locate(isExplicit: Bool) async -> MapLocationOutcome? {
         guard !isAcquiringLocation else { return nil }
+        let isPassiveCollectionRequest = isCollectionMap && !isExplicit
         operationGeneration += 1
         let generation = operationGeneration
         let cameraRevision = userCameraChangeRevision
         isAcquiringLocation = true
+        isAcquiringCollectionOrigin = isPassiveCollectionRequest
         // Preserve first/no-position feedback without flashing loading over an
         // already usable card while authorization inspection is suspended.
         isLocating = currentPosition == nil && (isExplicit || !initialPositionCompleted)
         defer {
             if generation == operationGeneration {
                 isAcquiringLocation = false
+                isAcquiringCollectionOrigin = false
                 isLocating = false
             }
         }
@@ -532,6 +1208,14 @@ final class MapViewModel {
 
         if !isExplicit, initialPositionCompleted { return nil }
 
+        // Collection entry may enrich travel facts, but never asks for permission
+        // or interrupts the library task with acquisition feedback.
+        if isPassiveCollectionRequest,
+           !authorization.servicesEnabled || !authorization.status.allowsPosition {
+            initialPositionCompleted = true
+            return nil
+        }
+
         if !authorization.servicesEnabled {
             initialPositionCompleted = true
             return .toast(.servicesDisabled)
@@ -548,7 +1232,12 @@ final class MapViewModel {
         let reusesPosition = isExplicit && authorization.status.allowsPosition && hasFreshSessionPosition
         isLocating = !reusesPosition
         if reusesPosition, let currentPosition {
+            if isCollectionMap { collectionTemporarySelection = .currentPosition }
+            deletionFallbackCandidate = nil
             selectedCandidate = nil
+            selectedSavedLocation = nil
+            discardCapture()
+            suppressesCurrentPositionCard = false
             selectedCandidateSource = nil
             clearMapFeatureSelection()
             selectedDetail = nil
@@ -567,7 +1256,12 @@ final class MapViewModel {
             currentAddress = nil
             startReverseGeocode()
             if isExplicit && !reusesPosition {
+                if isCollectionMap { collectionTemporarySelection = .currentPosition }
+                deletionFallbackCandidate = nil
                 selectedCandidate = nil
+                selectedSavedLocation = nil
+                discardCapture()
+                suppressesCurrentPositionCard = false
                 selectedCandidateSource = nil
                 clearMapFeatureSelection()
                 selectedDetail = nil
@@ -580,7 +1274,8 @@ final class MapViewModel {
             routeOriginIsAuthorized = showsUserLocation
             updateRoute()
             if !isExplicit { route.setActive(isActive && routeOriginIsAuthorized) }
-            if isExplicit ? userCameraChangeRevision == cameraRevision : !userChangedCamera {
+            if !isPassiveCollectionRequest,
+               isExplicit ? userCameraChangeRevision == cameraRevision : !userChangedCamera {
                 locationFocus = MapLocationFocus(
                     coordinate: position.coordinate, generation: generation,
                     geographicKind: .point
@@ -606,6 +1301,7 @@ final class MapViewModel {
             }
             guard accepts(generation) else { return nil }
             initialPositionCompleted = true
+            if isPassiveCollectionRequest { return nil }
             switch error {
             case .permissionDenied:
                 showsUserLocation = false

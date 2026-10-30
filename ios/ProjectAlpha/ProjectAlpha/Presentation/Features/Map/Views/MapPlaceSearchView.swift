@@ -42,7 +42,7 @@ struct MapPlaceSearchView: View {
                         MapSearchFailureView(message: .placeResolutionFailed, retry: model.retry)
                     }
                     ForEach(model.suggestions) { suggestion in
-                        Button { model.select(suggestion) } label: {
+                        DSButton { model.select(suggestion) } label: {
                             MapSearchResultRow(
                                 suggestion: suggestion,
                                 isResolving: suggestion.id == model.resolvingSuggestionID
@@ -71,7 +71,7 @@ struct MapPlaceSearchView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(action: close) { Text(CommonKeys.close) }
+                    DSButton(action: close) { Text(CommonKeys.close) }
                         .accessibilityIdentifier(MapSearchAccessibility.close)
                 }
             }
@@ -107,7 +107,7 @@ private struct MapSearchQueryField: View {
             .accessibilityIdentifier(MapSearchAccessibility.field)
 
             if !query.isEmpty {
-                Button(action: clearQuery) {
+                DSButton(action: clearQuery) {
                     Image.appSystemIcon(.clearText)
                         .foregroundStyle(.secondary)
                         .frame(minWidth: MapSearchLayout.minimumTarget, minHeight: MapSearchLayout.minimumTarget)
@@ -170,7 +170,7 @@ private struct MapSearchFailureView: View {
         VStack(alignment: .leading, spacing: MapSearchLayout.errorSpacing) {
             Text(message)
                 .foregroundStyle(.secondary)
-            Button(action: retry) { Text(CommonKeys.retry) }
+            DSButton(action: retry) { Text(CommonKeys.retry) }
                 .accessibilityIdentifier(MapSearchAccessibility.retry)
         }
         .padding(.vertical, MapSearchLayout.rowPadding)

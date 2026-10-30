@@ -25,12 +25,17 @@ final class HomeContainer {
     func makeCollectionDetailView(
         id: UUID,
         repository: any CollectionRepository,
-        router: Router<HomeRoute>
+        locationRepository: (any LocationRepository)? = nil,
+        mediaService: (any LocationMediaService)? = nil,
+        router: Router<HomeRoute>,
+        onOpenMap: @escaping (UUID?) -> Void = { _ in }
     ) -> CollectionDetailView {
         CollectionDetailView(viewModel: CollectionDetailViewModel(
             collectionID: id,
             repository: repository,
-            router: router
-        ))
+            router: router,
+            locationRepository: locationRepository,
+            mediaService: mediaService
+        ), onOpenMap: onOpenMap)
     }
 }

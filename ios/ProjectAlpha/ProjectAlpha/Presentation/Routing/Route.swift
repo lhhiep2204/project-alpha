@@ -10,6 +10,7 @@ import Foundation
 enum HomeRoute: Hashable {
     case root
     case collection(id: UUID)
+    case collectionMap(collectionID: UUID, initialLocationID: UUID?)
 }
 
 enum MapRoute: Hashable {

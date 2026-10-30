@@ -12,6 +12,17 @@ import Testing
 /// J-08 / U-17: navigation chrome follows the selected app language.
 @MainActor
 struct LocalizationLookupTests {
+    /// AC-69/U-17: success feedback ships in every supported app language.
+    @Test(arguments: Language.allCases.filter { $0 != .system })
+    func successToastsHaveTranslatedCatalogEntries(language: Language) {
+        for key in [CollectionKeys.saveSucceeded.rawValue, CollectionKeys.deleteSucceeded.rawValue,
+                    LocationKeys.saveSucceeded.rawValue, LocationKeys.deleteSucceeded.rawValue] {
+            let translated = LocalizationManager.localizedString(ToastSuccessTestKey(rawValue: key), locale: language.locale)
+            #expect(!translated.isEmpty)
+            if language != .english { #expect(translated != key) }
+        }
+    }
+
     /// AC-55/60: the shipping compiled catalog displays both names literally,
     /// even when user text contains punctuation or format-control characters.
     @Test(arguments: Language.allCases.filter { $0 != .system })
@@ -186,4 +197,8 @@ private enum CollectionCopyFixture {
         "Excluir “Trips 50%” e seu \(count) local? Esta ação não pode ser desfeita."
     }
     static let portugueseOther = "Excluir “Trips 50%” e seus 2 locais? Esta ação não pode ser desfeita."
+}
+
+nonisolated private struct ToastSuccessTestKey: LocalizedKey {
+    let rawValue: String
 }

@@ -29,7 +29,13 @@ final class MapContainer {
         self.routeEstimationService = routeEstimationService
     }
 
-    func makeMapView() -> MapView {
+    func makeMapView(
+        locationRepository: (any LocationRepository)? = nil,
+        collectionRepository: (any CollectionRepository)? = nil,
+        mediaService: (any LocationMediaService)? = nil,
+        scopeCollectionID: UUID? = nil,
+        initialLocationID: UUID? = nil
+    ) -> MapView {
         MapView(
             viewModel: MapViewModel(
                 deviceLocationService: deviceLocationService,
@@ -38,7 +44,12 @@ final class MapContainer {
                 routeEstimationService: routeEstimationService,
                 mapFeatureResolver: { feature async throws(PlaceServiceError) in
                     try await AppleMapFeatureResolver.resolve(feature)
-                }
+                },
+                locationRepository: locationRepository,
+                collectionRepository: collectionRepository,
+                scopeCollectionID: scopeCollectionID,
+                initialLocationID: initialLocationID,
+                mediaService: mediaService
             )
         )
     }
